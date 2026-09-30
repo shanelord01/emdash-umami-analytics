@@ -109,6 +109,17 @@ describe("the overview tick", () => {
 		expect(await state(host)).toMatchObject({ phase: "overview", lastProblem: { key: "umamiUnauthorized" } });
 	});
 
+	it("reaches a self-hosted Umami at the URL from the settings", async () => {
+		// No allow-list names this host: the request only leaves because the
+		// manifest declares unrestricted network access.
+		host = await newHost("umami");
+		await host.fixtures.plugin.setting("umamiApiUrl", "https://example.com/umami/api/");
+		await host.http.respond(umamiUrl.stats(TODAY, "https://example.com/umami/api"), umamiJson({ error: {} }, 500));
+
+		await tick(host)();
+
+		expect(host.http.requests().map((r) => r.url)).toEqual([umamiUrl.stats(TODAY, "https://example.com/umami/api")]);
+	});
 });
 
 describe("the paths tick", () => {

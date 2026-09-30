@@ -1,5 +1,6 @@
 /**
- * The Umami adapter, for Umami Cloud's REST API.
+ * The Umami adapter: Umami Cloud and self-hosted Umami, through the same
+ * REST API.
  *
  * Three things shape it, each read out of the Umami source at v3.4.0:
  *
@@ -42,7 +43,7 @@ import type {
 	Site,
 } from "./types.js";
 
-/** Umami Cloud's API. */
+/** Umami Cloud's API. A self-hosted Umami serves the same routes under `/api`. */
 export const UMAMI_CLOUD_API = "https://api.umami.is/v1";
 
 /** Where Umami Cloud serves its dashboard. */
@@ -92,6 +93,8 @@ export const UMAMI_CAPABILITIES: ProviderCapabilities = {
 export interface UmamiConfig {
 	apiKey: string;
 	websiteId: string;
+	/** The API's base URL. Empty means Umami Cloud. */
+	apiUrl?: string;
 	/** Hosts to filter on. Empty means "do not filter". */
 	hosts?: string[];
 	trailingSlash?: TrailingSlash;
@@ -103,9 +106,34 @@ export function createUmamiProvider(config: UmamiConfig): Provider {
 	return new UmamiProvider(config);
 }
 
-/** The website's page in Umami's own dashboard. */
-export function umamiDashboardUrl(websiteId: string): string | null {
-	return websiteId ? `${UMAMI_CLOUD_APP}/websites/${encodeURIComponent(websiteId)}` : null;
+/**
+ * The API base without a trailing slash, or null when the setting is not
+ * an http(s) address.
+ */
+export function umamiApiBase(apiUrl: string | undefined): string | null {
+	const value = (apiUrl ?? "").trim() || UMAMI_CLOUD_API;
+	try {
+		const url = new URL(value);
+		if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+		return `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * The website's page in Umami's own dashboard.
+ *
+ * A self-hosted Umami serves the dashboard beside its API, so the link is
+ * the API base without `/api`. A base that does not end that way gives no
+ * hint where the dashboard lives, and gets no link.
+ */
+export function umamiDashboardUrl(websiteId: string, apiUrl?: string): string | null {
+	const base = umamiApiBase(apiUrl);
+	if (!base || !websiteId) return null;
+	const page = `/websites/${encodeURIComponent(websiteId)}`;
+	if (base === UMAMI_CLOUD_API) return `${UMAMI_CLOUD_APP}${page}`;
+	return base.endsWith("/api") ? `${base.slice(0, -"/api".length)}${page}` : null;
 }
 
 /** One row of `metrics/expanded`, whatever it was grouped by. */
@@ -144,7 +172,7 @@ class UmamiProvider implements Provider {
 	}
 
 	dashboardUrl(): string | null {
-		return umamiDashboardUrl(this.#config.websiteId);
+		return umamiDashboardUrl(this.#config.websiteId, this.#config.apiUrl);
 	}
 
 	async validate(): Promise<Result<true>> {
@@ -375,12 +403,15 @@ class UmamiProvider implements Provider {
 	}
 
 	async #get(path: string, params: Array<[string, string]>): Promise<Result<unknown>> {
+		const base = umamiApiBase(this.#config.apiUrl);
+		if (!base) return failure("umamiBadUrl");
+
 		const query = params.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
 		this.#sent++;
 
 		let response: Response;
 		try {
-			response = await this.#config.fetch(`${UMAMI_CLOUD_API}${path}?${query}`, {
+			response = await this.#config.fetch(`${base}${path}?${query}`, {
 				headers: { Authorization: `Bearer ${this.#config.apiKey}`, Accept: "application/json" },
 			});
 		} catch (error) {
@@ -390,7 +421,8 @@ class UmamiProvider implements Provider {
 		if (response.status === 429) return failure("umamiRateLimited");
 
 		// Umami answers in JSON, its errors included. Anything else was
-		// written by something in front of it.
+		// written by something in front of it: a login proxy's sign-in page
+		// (the host follows its redirect), or the page a wrong URL leads to.
 		let payload: unknown;
 		try {
 			payload = await response.json();

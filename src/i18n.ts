@@ -228,12 +228,13 @@ const en = {
 		"Umami answered 401 Unauthorized: the API key is wrong or revoked, or its user cannot view this website.",
 	umamiNoWebsite: "Umami has no website with this ID that the API key's user can view (HTTP {status}).",
 	umamiProxy:
-		"Umami answered with a web page instead of JSON (HTTP {status}): something in front of the API is intercepting the request.",
+		"Umami answered with a web page instead of JSON (HTTP {status}): a login proxy in front of the API is intercepting the request, or the API URL points somewhere else.",
 	umamiRateLimited: "Umami rate-limited the request (429). The next sync tries again.",
 	umamiUnreachable: "Umami could not be reached: {detail}",
 	umamiHttp: "Umami returned HTTP {status}",
 	umamiUnexpected: "Umami returned a response in a shape this plugin does not know.",
 	umamiTruncated: "Umami reported {max} or more paths for one day, which is more than the plugin reads.",
+	umamiBadUrl: "The Umami API URL is not a web address. For a self-hosted Umami it is https://your-host/api.",
 } satisfies Record<string, Message>;
 
 export type MessageKey = keyof typeof en;
@@ -468,12 +469,13 @@ const de: Record<MessageKey, Message> = {
 	umamiNoWebsite:
 		"Umami kennt keine Website mit dieser ID, die der Benutzer des API-Schlüssels ansehen darf (HTTP {status}).",
 	umamiProxy:
-		"Umami hat mit einer Webseite statt mit JSON geantwortet (HTTP {status}): Etwas vor der API fängt die Anfrage ab.",
+		"Umami hat mit einer Webseite statt mit JSON geantwortet (HTTP {status}): Ein Login-Proxy vor der API fängt die Anfrage ab, oder die API-URL zeigt auf etwas anderes.",
 	umamiRateLimited: "Umami hat die Anfrage gedrosselt (429). Die nächste Synchronisierung versucht es erneut.",
 	umamiUnreachable: "Umami war nicht erreichbar: {detail}",
 	umamiHttp: "Umami hat HTTP {status} zurückgegeben",
 	umamiUnexpected: "Umami hat eine Antwort in einer Form geliefert, die dieses Plugin nicht kennt.",
 	umamiTruncated: "Umami hat für einen Tag {max} oder mehr Pfade gemeldet, mehr als das Plugin liest.",
+	umamiBadUrl: "Die Umami-API-URL ist keine Webadresse. Bei einem selbst gehosteten Umami lautet sie https://dein-host/api.",
 };
 
 const catalogues = { en, de } as const;

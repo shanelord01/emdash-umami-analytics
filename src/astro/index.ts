@@ -43,6 +43,11 @@ export interface AnalyticsBeaconOptions {
 	 */
 	websiteId?: string;
 	/**
+	 * Umami: where the tracker script is served. Umami Cloud's unless set;
+	 * a self-hosted Umami serves it at `https://your-host/script.js`.
+	 */
+	scriptUrl?: string;
+	/**
 	 * Umami: hostnames the tracker may report from (`data-domains`). On any
 	 * other host, a preview deploy for one, it stays silent.
 	 */
@@ -167,7 +172,7 @@ export function buildBeaconScript(options: AnalyticsBeaconOptions): string {
 	// Cloudflare parses one JSON attribute, which is why its value is
 	// stringified here and again below.
 	const umami = options.provider === "umami";
-	const src = umami ? UMAMI_SCRIPT_SRC : BEACON_SRC;
+	const src = umami ? options.scriptUrl || UMAMI_SCRIPT_SRC : BEACON_SRC;
 	const attributes: Array<[string, string]> = umami
 		? [
 				["data-website-id", options.websiteId ?? ""],

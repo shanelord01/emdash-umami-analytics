@@ -83,7 +83,7 @@ function provider(fetch: FetchLike, over: Partial<Parameters<typeof createUmamiP
 }
 
 describe("every request", () => {
-	it("is a GET with the key as a bearer token, to Umami Cloud", async () => {
+	it("is a GET with the key as a bearer token, to Umami Cloud unless told otherwise", async () => {
 		const { calls, fetch } = recorder(quiet);
 		await provider(fetch).overview(RANGE);
 		expect(calls).toHaveLength(5);
@@ -92,6 +92,20 @@ describe("every request", () => {
 			expect(call.headers.authorization).toBe("Bearer umami_secret");
 			expect(call.url.href.startsWith(`${UMAMI_CLOUD_API}/websites/${WEBSITE}/`)).toBe(true);
 		}
+	});
+
+	it("goes to a self-hosted Umami's API when its URL is set", async () => {
+		const { calls, fetch } = recorder(quiet);
+		await provider(fetch, { apiUrl: " https://stats.example.com/api/ " }).dayTotals?.("2026-09-20");
+		expect(calls[0]!.url.origin).toBe("https://stats.example.com");
+		expect(calls[0]!.url.pathname).toBe(`/api/websites/${WEBSITE}/stats`);
+	});
+
+	it("refuses an API URL that is no web address, without sending anything", async () => {
+		const { calls, fetch } = recorder(quiet);
+		const res = await provider(fetch, { apiUrl: "stats.example.com/api" }).dayTotals?.("2026-09-20");
+		expect(res).toMatchObject({ ok: false, problem: { key: "umamiBadUrl" } });
+		expect(calls).toHaveLength(0);
 	});
 
 	it("covers whole UTC days, from the first millisecond to the last", async () => {
@@ -423,8 +437,18 @@ describe("site discovery", () => {
 });
 
 describe("the dashboard link", () => {
-	it("opens the website on Umami Cloud, and gives no link without a website", () => {
+	it("opens the website on Umami Cloud, or beside a self-hosted API", () => {
 		expect(umamiDashboardUrl(WEBSITE)).toBe(`https://cloud.umami.is/websites/${WEBSITE}`);
+		expect(umamiDashboardUrl(WEBSITE, "https://stats.example.com/api")).toBe(
+			`https://stats.example.com/websites/${WEBSITE}`,
+		);
+		expect(umamiDashboardUrl(WEBSITE, "https://example.com/umami/api/")).toBe(
+			`https://example.com/umami/websites/${WEBSITE}`,
+		);
+	});
+
+	it("gives no link without a website, or where the API URL does not say where the dashboard is", () => {
 		expect(umamiDashboardUrl("")).toBeNull();
+		expect(umamiDashboardUrl(WEBSITE, "https://stats.example.com/v2")).toBeNull();
 	});
 });

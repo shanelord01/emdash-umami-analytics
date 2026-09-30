@@ -183,7 +183,7 @@ above:
 
 | | |
 |---|---|
-| A website in Umami | on Umami Cloud, with the tracking script on the site |
+| A website in Umami | on Umami Cloud or on your own Umami, with the tracking script on the site |
 | An API key | created in Umami under **Settings → API keys** |
 | The website ID | from the website's settings in Umami, or leave it empty and pick it from the list the widget shows |
 
@@ -202,8 +202,9 @@ in Umami instead.
 
 ### What the plugin requests
 
-Three `GET` endpoints of `api.umami.is`, each with
-`Authorization: Bearer <API key>` and no other header of its own:
+Three `GET` endpoints, each with `Authorization: Bearer <API key>` and no
+other header of its own. If a proxy sits in front of your Umami API, these
+are the ones to let through:
 
 | Endpoint | Used for |
 |---|---|
@@ -213,6 +214,20 @@ Three `GET` endpoints of `api.umami.is`, each with
 
 A sync makes at most seven requests, every 15 minutes by default, and the
 Analytics page five when it is opened.
+
+### Self-hosted Umami
+
+Set **Umami API URL** to `https://your-host/api`. Two things it needs:
+
+- **Umami 3.4.0 or later.** That is the first release with API keys for
+  self-hosted installs.
+- **A public hostname.** EmDash refuses to let a plugin request a private
+  address, so `localhost`, a LAN address or a name that resolves to one
+  will not work. The error says so.
+
+If a login proxy (Authelia, Cloudflare Access, an identity-aware proxy)
+covers the whole Umami host, exempt the three endpoints above from it.
+Otherwise the plugin gets the sign-in page instead of JSON and says so.
 
 ## Install
 
@@ -250,6 +265,7 @@ Fill these in under Plugins → Analytics → Settings.
 | Web Analytics site tag | **The site tag, not the beacon token.** They are different values. In the Cloudflare dashboard it is the ID at the end of the site's **Manage site** link (`…/web-analytics/edit/<site tag>`); the analytics view does not show it. Leave empty and the widget lists the sites on the account that had traffic in the last 30 days, with their hostnames, so you can copy the right one |
 | Umami API key | Umami only. Stored encrypted like the Cloudflare token. See "The key, precisely" |
 | Umami website ID | Umami only. Leave empty and the widget lists the websites the key's user owns or manages through a team |
+| Umami API URL | Umami only. Umami Cloud by default. For a self-hosted Umami, `https://your-host/api` |
 | Hostnames to count | Comma-separated. Empty uses the site URL and its `www` form. One site tag often also covers `*.pages.dev` preview deploys, which should not be counted as production traffic |
 | Sync every | 15 minutes by default |
 | Keep daily rows for | 90 days by default |
@@ -333,6 +349,7 @@ value the plugin's settings take:
 analyticsBeacon({
   provider: "umami",
   websiteId: process.env.UMAMI_WEBSITE_ID,
+  scriptUrl: "https://your-host/script.js", // self-hosted; Umami Cloud without it
   domains: ["example.com", "www.example.com"], // optional
 });
 ```
@@ -436,7 +453,9 @@ different provider, not a plugin bug.
 What leaves your site: path strings and a site tag, to
 `api.cloudflare.com`. Nothing from your content.
 
-With Umami: the website ID and the hostnames to count, to `api.umami.is`.
+With Umami: the website ID and the hostnames to count, to the Umami API
+URL in the settings. The data stays wherever that Umami stores it, which
+for a self-hosted one is your own choice.
 
 One account-model caveat: the token is account-scoped and `siteTag` is just
 a filter. If several client sites share one Cloudflare account, a token

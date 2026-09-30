@@ -60,8 +60,8 @@ function umamiRange(since: string, until: string): string {
  * finds no response and fails the tick.
  */
 export const umamiUrl = {
-	stats: (day: string) =>
-		`https://api.umami.is/v1/websites/${UMAMI_WEBSITE}/stats?${umamiRange(day, day)}&${UMAMI_FILTERS}`,
+	stats: (day: string, base = "https://api.umami.is/v1") =>
+		`${base}/websites/${UMAMI_WEBSITE}/stats?${umamiRange(day, day)}&${UMAMI_FILTERS}`,
 	metrics: (type: "path" | "referrer" | "country", since: string, until: string, limit: number) =>
 		`https://api.umami.is/v1/websites/${UMAMI_WEBSITE}/metrics/expanded?${umamiRange(since, until)}&${UMAMI_FILTERS}&type=${type}&limit=${limit}`,
 	dayPaths: (day: string) =>

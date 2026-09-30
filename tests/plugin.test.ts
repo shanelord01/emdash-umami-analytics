@@ -304,8 +304,16 @@ describe("the manifest the host actually loaded", () => {
 			routes?: Array<{ name: string; permission?: string }>;
 		};
 
-		expect(manifest.capabilities).toEqual(["content:read", "schema:read", "network:request"]);
-		expect(manifest.allowedHosts).toEqual(["api.cloudflare.com", "api.umami.is"]);
+		// Unrestricted, with no allow-list beside it: a self-hosted Umami's
+		// host comes from the settings, and the two are mutually exclusive.
+		// The host adds `network:request`, which the unrestricted one implies.
+		expect(manifest.capabilities).toEqual([
+			"content:read",
+			"schema:read",
+			"network:request:unrestricted",
+			"network:request",
+		]);
+		expect(manifest.allowedHosts).toEqual([]);
 		expect(Object.keys(manifest.storage).sort()).toEqual(["daily", "entries", "rollup"]);
 		// Sorting the content page by these needs them declared as indexes.
 		expect(manifest.storage.entries!.indexes).toEqual(

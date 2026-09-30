@@ -26,6 +26,8 @@ export interface AnalyticsSettings {
 	accountId: string;
 	/** The site's id at the provider: a Cloudflare site tag, an Umami website ID. */
 	siteTag: string;
+	/** Where a self-hosted Umami serves its API. Empty means Umami Cloud. */
+	umamiApiUrl: string;
 	hosts: string[];
 	syncInterval: string;
 	retentionDays: number;
@@ -59,13 +61,14 @@ export async function readSettings(ctx: PluginContext): Promise<SettingsResult> 
 	const apiToken = str(raw.get(umami ? "umamiApiKey" : "cfApiToken"));
 	const accountId = str(raw.get("cfAccountId"));
 	const siteTag = str(raw.get(umami ? "umamiWebsiteId" : "cfSiteTag"));
+	const umamiApiUrl = str(raw.get("umamiApiUrl"));
 
 	const hosts = parseHosts(raw.get("hosts"), ctx.site.url);
 	const syncInterval = str(raw.get("syncInterval")) || DEFAULT_SYNC_INTERVAL;
 	const retentionDays = clampNumber(raw.get("retentionDays"), 7, MAX_RETENTION_DAYS, 90);
 	const chunkSize = clampNumber(raw.get("chunkSize"), 10, MAX_CHUNK_SIZE, MAX_CHUNK_SIZE);
 
-	const partial = { provider, apiToken, accountId, siteTag, hosts, syncInterval, retentionDays, chunkSize };
+	const partial = { provider, apiToken, accountId, siteTag, umamiApiUrl, hosts, syncInterval, retentionDays, chunkSize };
 	if (provider === "demo") return { ok: true, settings: partial };
 
 	// Umami needs a key and nothing else: the website ID is optional in the

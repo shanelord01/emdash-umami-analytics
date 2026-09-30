@@ -218,8 +218,12 @@ describe("the Umami beacon", () => {
 		expect(dom.attributes).toEqual({ "data-website-id": umami.websiteId });
 	});
 
-	it("limits the tracker to the named hostnames", () => {
-		const dom = runInFakeDom(buildBeaconScript({ ...umami, domains: ["example.com", "www.example.com"] }), "/");
+	it("loads a self-hosted tracker and limits it to the named hostnames", () => {
+		const dom = runInFakeDom(
+			buildBeaconScript({ ...umami, scriptUrl: "https://stats.example.com/script.js", domains: ["example.com", "www.example.com"] }),
+			"/",
+		);
+		expect(dom.src).toBe("https://stats.example.com/script.js");
 		expect(dom.attributes["data-domains"]).toBe("example.com,www.example.com");
 	});
 
@@ -241,7 +245,7 @@ describe("the Umami beacon", () => {
 	});
 
 	it("cannot be terminated early by a crafted value", () => {
-		const code = buildBeaconScript({ ...umami, websiteId: "a</script><script>alert(1)</script>" });
+		const code = buildBeaconScript({ ...umami, scriptUrl: "https://x.example/</script><script>alert(1)</script>" });
 		expect(code).not.toContain("</script>");
 		expect(() => new Function(code)).not.toThrow();
 	});

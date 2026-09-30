@@ -264,6 +264,7 @@ export function buildProvider(ctx: PluginContext, settings: AnalyticsSettings): 
 		return createUmamiProvider({
 			apiKey: settings.apiToken,
 			websiteId: settings.siteTag,
+			apiUrl: settings.umamiApiUrl,
 			hosts: settings.hosts,
 			trailingSlash: ctx.site.trailingSlash,
 			fetch: (url, init) => http.fetch(url, init),

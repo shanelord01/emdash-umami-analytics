@@ -47,14 +47,19 @@
 	//
 	// `content:read` and `schema:read` are the content join: the plugin
 	// asks the schema which collections are routable, asks the content API
-	// where each entry is published, and stores that mapping. `network:request`
-	// talks to two pinned hosts, one per provider.
+	// where each entry is published, and stores that mapping.
+	//
+	// `network:request:unrestricted`, with `allowedHosts` empty as that
+	// capability requires, because a self-hosted Umami lives on a host the
+	// operator types into the settings, which no allow-list written here
+	// can name. The plugin requests two places only: `api.cloudflare.com`,
+	// and the Umami API URL from the settings (`api.umami.is` unless changed).
 	//
 	// Deliberately absent: `content:write` (this plugin reports, it never
 	// edits), `users:read`, `email:send`. Nothing about your content leaves
 	// the site — the outbound request carries path strings and a site tag.
-	"capabilities": ["content:read", "schema:read", "network:request"],
-	"allowedHosts": ["api.cloudflare.com", "api.umami.is"],
+	"capabilities": ["content:read", "schema:read", "network:request:unrestricted"],
+	"allowedHosts": [],
 
 	"storage": {
 		// The fact table: one row per (day, path).
@@ -94,7 +99,7 @@
 				"default": "cloudflare",
 				"options": [
 					{ "value": "cloudflare", "label": "Cloudflare Web Analytics" },
-					{ "value": "umami", "label": "Umami Cloud" },
+					{ "value": "umami", "label": "Umami (Cloud or self-hosted)" },
 					{ "value": "demo", "label": "Demo data (generated, not real traffic)" }
 				],
 				"description": "Demo data needs no account and fills the dashboard with generated numbers. Switching the data source clears the stored numbers."
@@ -117,12 +122,18 @@
 			"umamiApiKey": {
 				"type": "secret",
 				"label": "Umami API key",
-				"description": "Create it in Umami under Settings → API keys, as a user who can view the website and nothing else."
+				"description": "Create it in Umami under Settings → API keys, as a user who can view the website and nothing else. Self-hosted Umami has API keys from 3.4.0."
 			},
 			"umamiWebsiteId": {
 				"type": "string",
 				"label": "Umami website ID",
 				"description": "The ID in the website's settings in Umami. Leave empty and the widget lists the websites the key's user owns. A user who can only view a website gets an empty list and has to enter the ID."
+			},
+			"umamiApiUrl": {
+				"type": "string",
+				"label": "Umami API URL",
+				"default": "https://api.umami.is/v1",
+				"description": "Umami Cloud as it stands. For a self-hosted Umami, https://your-host/api: a public hostname, because EmDash refuses private addresses."
 			},
 			"hosts": {
 				"type": "string",
