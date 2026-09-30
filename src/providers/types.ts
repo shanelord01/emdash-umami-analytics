@@ -94,6 +94,21 @@ export interface LabelledRow {
 	pageviews: number;
 }
 
+/** Page views by the values of one event data property the site attaches to them. */
+export interface PropertyBreakdown {
+	property: string;
+	/** Most viewed first. A value the site sent as a comma-separated list counts once for each part. */
+	values: Array<{ value: string; pageviews: number }>;
+}
+
+export interface OverviewOptions {
+	/**
+	 * Event data properties to break the range's page views down by. A
+	 * provider that cannot read them leaves `Overview.properties` out.
+	 */
+	properties?: string[];
+}
+
 export interface Overview {
 	/** Site totals for the range. */
 	totals: { pageviews: number; visits: number; sampleInterval: number };
@@ -102,6 +117,12 @@ export interface Overview {
 	topPaths: PathRow[];
 	referrers: LabelledRow[];
 	countries: LabelledRow[];
+	/**
+	 * One entry per property asked for in `OverviewOptions`, in that order,
+	 * including a property no page view carried. Absent when none was asked
+	 * for or the provider could not read them.
+	 */
+	properties?: PropertyBreakdown[];
 	/**
 	 * True when the response hit its `limit` and was silently truncated.
 	 * Cloudflare caps returned groups without saying so.
@@ -156,7 +177,7 @@ export interface Provider {
 
 	retention(): Promise<Result<Retention>>;
 
-	overview(range: DateRange): Promise<Result<Overview>>;
+	overview(range: DateRange, options?: OverviewOptions): Promise<Result<Overview>>;
 
 	/** Per-day numbers for specific paths, batched into one request. */
 	paths(paths: string[], range: DateRange): Promise<Result<PathDayRow[]>>;

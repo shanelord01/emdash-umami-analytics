@@ -45,6 +45,10 @@ const en = {
 	coverageLive: "Per-entry numbers since {date}, as far back as the provider counts every page view.",
 	breakdownsSince: "Referrers and countries since {date}, as far back as the provider counts every page view.",
 	perEntry: "Per entry",
+	viewsBy: "Views by {property}",
+	colValue: "Value",
+	propertiesNote:
+		"Page views in this range that carry the event data the site attaches to them, counted on every hostname. A value that lists several parts separated by commas counts once for each part.",
 	overview: "Overview",
 
 	allCollections: "All",
@@ -228,6 +232,10 @@ const de: Record<MessageKey, Message> = {
 	coverageLive: "Zahlen pro Eintrag seit {date}, so weit zurück, wie der Anbieter jeden Seitenaufruf zählt.",
 	breakdownsSince: "Verweisquellen und Länder seit {date}, so weit zurück, wie der Anbieter jeden Seitenaufruf zählt.",
 	perEntry: "Pro Eintrag",
+	viewsBy: "Aufrufe nach {property}",
+	colValue: "Wert",
+	propertiesNote:
+		"Seitenaufrufe in diesem Zeitraum, die die Ereignisdaten tragen, die die Website ihnen mitgibt, gezählt auf jedem Hostnamen. Ein Wert, der mehrere durch Kommas getrennte Teile auflistet, zählt einmal für jeden Teil.",
 	overview: "Übersicht",
 
 	allCollections: "Alle",

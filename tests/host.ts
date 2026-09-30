@@ -53,6 +53,8 @@ function umamiRange(since: string, until: string): string {
  * finds no response and fails the tick.
  */
 export const umamiUrl = {
+	eventData: (since: string, until: string) =>
+		`https://api.umami.is/v1/websites/${UMAMI_WEBSITE}/event-data/events?${umamiRange(since, until)}&event=${encodeURIComponent("eq.emdash-umami-analytics:page-views")}&match=any&path=${encodeURIComponent("nre.^/_emdash(/|$)")}&eventType=1`,
 	stats: (day: string, base = "https://api.umami.is/v1") =>
 		`${base}/websites/${UMAMI_WEBSITE}/stats?${umamiRange(day, day)}&${UMAMI_FILTERS}`,
 	metrics: (type: "path" | "referrer" | "country", since: string, until: string, limit: number) =>
@@ -102,14 +104,31 @@ export function umamiRows(rows: Array<[name: string, pageviews: number, visits: 
 /** Answer one overview: totals for today and yesterday, and the three breakdowns over the widget's week. */
 export async function respondUmamiOverview(
 	runtime: PluginRuntimeTestHost,
-	opts: { since?: string; today?: [number, number]; yesterday?: [number, number]; paths?: Array<[string, number, number]> } = {},
+	opts: {
+		since?: string;
+		today?: [number, number];
+		yesterday?: [number, number];
+		paths?: Array<[string, number, number]>;
+		/** Page view event data as `event-data/events` counts it: property, value, page views. */
+		eventData?: Array<[string, string, number]>;
+	} = {},
 ) {
 	const since = opts.since ?? addDays(TODAY, -6);
+	// The analytics page reads event data in place of yesterday's totals;
+	// a sync tick reads yesterday. Either finds its answer here.
+	await runtime.http.respond(umamiUrl.eventData(since, TODAY), umamiEventData(opts.eventData ?? []));
 	await runtime.http.respond(umamiUrl.stats(TODAY), umamiStats(...(opts.today ?? [10, 5])));
 	await runtime.http.respond(umamiUrl.stats(addDays(TODAY, -1)), umamiStats(...(opts.yesterday ?? [20, 8])));
 	await runtime.http.respond(umamiUrl.metrics("path", since, TODAY, 100), umamiRows(opts.paths ?? [["/", 30, 13]]));
 	await runtime.http.respond(umamiUrl.metrics("referrer", since, TODAY, 20), umamiRows([["google.com", 9, 6]]));
 	await runtime.http.respond(umamiUrl.metrics("country", since, TODAY, 50), umamiRows([["DE", 25, 11]]));
+}
+
+/** `event-data/events` rows for page views: no event name, one row per property and value. */
+export function umamiEventData(rows: Array<[property: string, value: string, pageviews: number]>): Response {
+	return umamiJson(
+		rows.map(([propertyName, propertyValue, total]) => ({ eventName: null, propertyName, dataType: 1, propertyValue, total })),
+	);
 }
 
 export async function setState(runtime: PluginRuntimeTestHost, state: SyncState) {

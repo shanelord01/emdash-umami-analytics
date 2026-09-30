@@ -34,8 +34,10 @@ import type {
 	FetchLike,
 	LabelledRow,
 	Overview,
+	OverviewOptions,
 	PathDayRow,
 	PathRow,
+	PropertyBreakdown,
 	Provider,
 	ProviderCapabilities,
 	Result,
@@ -84,6 +86,13 @@ export const MAX_TEAMS_READ = 4;
  * value itself as an operator.
  */
 const INTERNAL_PATHS = "nre.^/_emdash(/|$)";
+
+/**
+ * The `event` value that switches `event-data/events` to counting by
+ * value. It names no event: page views have none, and the request keeps
+ * custom events out (see `#properties`).
+ */
+const PAGE_VIEW_DATA = "eq.emdash-umami-analytics:page-views";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -230,22 +239,28 @@ class UmamiProvider implements Provider {
 	 * Top pages, referrers and countries over the whole range, and daily
 	 * totals for its last day and the day before: five requests.
 	 *
+	 * Asked for event data properties, it reads them in place of the day
+	 * before's totals, so it is still five. That is for the analytics page,
+	 * whose store already holds the day before.
+	 *
 	 * The first goes out alone. A wrong key, an unreachable host or a login
 	 * proxy fails every request alike, and failing on one leaves the caller
 	 * its budget for a fallback.
 	 */
-	async overview(range: DateRange): Promise<Result<Overview>> {
+	async overview(range: DateRange, options: OverviewOptions = {}): Promise<Result<Overview>> {
 		const span = daysBetween(range.since, range.until);
 		if (span < 0) return { ok: false, error: `Inverted range: ${range.since} is after ${range.until}` };
 
 		const last = await this.dayTotals(range.until);
 		if (!last.ok) return last;
 
-		const [before, pages, refs, geo] = await Promise.all([
-			span >= 1 ? this.dayTotals(addDays(range.until, -1)) : null,
+		const asked = options.properties ?? [];
+		const [before, pages, refs, geo, properties] = await Promise.all([
+			span >= 1 && asked.length === 0 ? this.dayTotals(addDays(range.until, -1)) : null,
 			this.#metrics("path", range, TOP_PATHS_READ),
 			this.#metrics("referrer", range, REFERRERS_LIMIT),
 			this.#metrics("country", range, COUNTRIES_LIMIT),
+			asked.length > 0 ? this.#properties(range, asked) : undefined,
 		]);
 		if (before && !before.ok) return before;
 		if (!pages.ok) return pages;
@@ -269,6 +284,7 @@ class UmamiProvider implements Provider {
 				// has no row, so there is no direct-traffic line to label.
 				referrers: labelled(refs.value, (name) => name),
 				countries: labelled(geo.value, countryCode),
+				...(properties && { properties }),
 				truncated:
 					pages.value.length >= TOP_PATHS_READ ||
 					refs.value.length >= REFERRERS_LIMIT ||
@@ -318,6 +334,55 @@ class UmamiProvider implements Provider {
 			ok: true,
 			value: { date: day, pageviews, visits, uniques: numberAt(res.value, "visitors"), sampleInterval: 1 },
 		};
+	}
+
+	/**
+	 * Page views by the values of each asked property, from one request.
+	 *
+	 * `event-data/events` counts event data rows by property and value when
+	 * its `event` parameter is set, which is also a filter on the event
+	 * name. A page view has no event name, so that filter alone matches
+	 * nothing. With `match=any` Umami joins the filters with "or", which
+	 * lets the path filter that leaves out the admin carry the query:
+	 * every page view outside `/_emdash` passes it. `eventType=1` is always
+	 * joined with "and", and keeps custom events out. Read in the source at
+	 * v3.4.0 and checked against a live server on PostgreSQL.
+	 *
+	 * The hostname filter cannot be sent here, because "or" would join it
+	 * too, so these counts include every hostname the website reports.
+	 *
+	 * This is an extra on the analytics page: if it fails, the page shows
+	 * no breakdown rather than falling back to the store.
+	 */
+	async #properties(range: DateRange, asked: string[]): Promise<PropertyBreakdown[] | undefined> {
+		const res = await this.#get(`${this.#website}/event-data/events`, [
+			["startAt", String(dayStart(range.since))],
+			["endAt", String(dayStart(range.until) + MS_PER_DAY - 1)],
+			["event", PAGE_VIEW_DATA],
+			["match", "any"],
+			["path", INTERNAL_PATHS],
+			["eventType", "1"],
+		]);
+		if (!res.ok || !Array.isArray(res.value)) return undefined;
+
+		const counts = new Map(asked.map((property) => [property, new Map<string, number>()]));
+		for (const row of res.value) {
+			if (!isRecord(row) || row.eventName != null) continue;
+			const values = typeof row.propertyName === "string" ? counts.get(row.propertyName) : undefined;
+			if (!values || typeof row.propertyValue !== "string") continue;
+			const pageviews = numberAt(row, "total");
+			for (const part of row.propertyValue.split(",")) {
+				const value = part.trim();
+				if (value) values.set(value, (values.get(value) ?? 0) + pageviews);
+			}
+		}
+
+		return asked.map((property) => ({
+			property,
+			values: [...counts.get(property)!]
+				.map(([value, pageviews]) => ({ value, pageviews }))
+				.sort((a, b) => b.pageviews - a.pageviews || a.value.localeCompare(b.value)),
+		}));
 	}
 
 	/**

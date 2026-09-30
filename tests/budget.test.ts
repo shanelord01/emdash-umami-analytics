@@ -391,11 +391,17 @@ describe("Umami, which answers one day per request", () => {
 	it("an analytics page load over 90 days, answered live by five requests", async () => {
 		host = await newHost("umami");
 		const paths = await withStore(host);
-		await respondUmamiOverview(host, { since: addDays(TODAY, -89), paths: paths.map((path) => [path, 9, 4]) });
+		await respondUmamiOverview(host, {
+			since: addDays(TODAY, -89),
+			paths: paths.map((path) => [path, 9, 4]),
+			eventData: [["category", "our-trips", 12]],
+		});
 
 		const calls = await bridgeCalls(() => host!.admin.act("/analytics", RANGE_ACTION, { value: 90 }));
 
 		expect(calls.length, calls.join(", ")).toBeLessThanOrEqual(LIMIT);
+		// The breakdown by event data is one of the five.
+		expect(host.http.requests().map((r) => r.url)).toContain(umamiUrl.eventData(addDays(TODAY, -89), TODAY));
 		expect(host.http.requests()).toHaveLength(5);
 		expect(calls).toContain("storageGetMany");
 	});
