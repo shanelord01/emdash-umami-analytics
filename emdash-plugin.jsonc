@@ -127,7 +127,7 @@
 			"umamiWebsiteId": {
 				"type": "string",
 				"label": "Umami website ID",
-				"description": "The ID in the website's settings in Umami. Leave empty and the widget lists the websites the key's user owns. A user who can only view a website gets an empty list and has to enter the ID."
+				"description": "The ID in the website's settings in Umami. Leave empty and the widget lists the websites of the key's user and of that user's teams. The ID can also be typed in."
 			},
 			"umamiApiUrl": {
 				"type": "string",

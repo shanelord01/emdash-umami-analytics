@@ -73,7 +73,8 @@ With Umami the same checks run under Umami's names: API key, Umami access,
 website ID, hostnames. It makes one request to Umami, and a second when
 Umami answers 401, because Umami gives that answer both for a key it does
 not know and for a website the key's user may not view. The second request
-tells the two apart.
+tells the two apart. While no website ID is set it lists the websites to
+choose from instead, which takes up to six requests.
 
 <img src="https://raw.githubusercontent.com/eisbachcode/emdash-plugin-analytics/main/images/setup-check.png" width="820" alt="The setup check with every row OK: data source, site URL, content index with 8 entries matched, scheduled sync and last sync">
 
@@ -196,13 +197,14 @@ view-only member of a team that holds only that website. A key made under
 your own admin user could read, change and delete every website that
 user can reach.
 
-Such a user owns no website, so the list the widget and the setup check
-offer stays empty for it. Copy the website ID from the website's settings
-in Umami instead.
+The list the widget and the setup check offer covers the user's own
+websites and the websites of their teams, up to four teams, so such a user
+finds the website there. The ID can also be copied from the website's
+settings in Umami.
 
 ### What the plugin requests
 
-Three `GET` endpoints, each with `Authorization: Bearer <API key>` and no
+Five `GET` endpoints, each with `Authorization: Bearer <API key>` and no
 other header of its own. If a proxy sits in front of your Umami API, these
 are the ones to let through:
 
@@ -210,7 +212,9 @@ are the ones to let through:
 |---|---|
 | `/websites/{id}/stats` | one day's page views, visits and visitors |
 | `/websites/{id}/metrics/expanded` | pages, referrers, countries and hostnames |
-| `/websites` | the website list, only while no website ID is set or Umami answers 401 during a setup check |
+| `/websites` | the user's own websites, only while no website ID is set or Umami answers 401 during a setup check |
+| `/me/teams` | the user's teams, only while no website ID is set |
+| `/teams/{id}/websites` | a team's websites, for up to four teams, only while no website ID is set |
 
 A sync makes at most seven requests, every 15 minutes by default, and the
 Analytics page five when it is opened.
@@ -226,7 +230,7 @@ Set **Umami API URL** to `https://your-host/api`. Two things it needs:
   will not work. The error says so.
 
 If a login proxy (Authelia, Cloudflare Access, an identity-aware proxy)
-covers the whole Umami host, exempt the three endpoints above from it.
+covers the whole Umami host, exempt the endpoints above from it.
 Otherwise the plugin gets the sign-in page instead of JSON and says so.
 
 ## Install
@@ -264,7 +268,7 @@ Fill these in under Plugins → Analytics → Settings.
 | Cloudflare account ID | Manage Account → Account Home |
 | Web Analytics site tag | **The site tag, not the beacon token.** They are different values. In the Cloudflare dashboard it is the ID at the end of the site's **Manage site** link (`…/web-analytics/edit/<site tag>`); the analytics view does not show it. Leave empty and the widget lists the sites on the account that had traffic in the last 30 days, with their hostnames, so you can copy the right one |
 | Umami API key | Umami only. Stored encrypted like the Cloudflare token. See "The key, precisely" |
-| Umami website ID | Umami only. Leave empty and the widget lists the websites the key's user owns or manages through a team |
+| Umami website ID | Umami only. Leave empty and the widget lists the websites of the key's user and of that user's teams. The ID can also be typed in |
 | Umami API URL | Umami only. Umami Cloud by default. For a self-hosted Umami, `https://your-host/api` |
 | Hostnames to count | Comma-separated. Empty uses the site URL and its `www` form. One site tag often also covers `*.pages.dev` preview deploys, which should not be counted as production traffic |
 | Sync every | 15 minutes by default |

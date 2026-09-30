@@ -71,6 +71,14 @@ const HOSTNAMES_LIMIT = 50;
 const WEBSITES_LIMIT = 100;
 
 /**
+ * Teams whose websites one discovery reads. The setup check is the
+ * tightest caller: four bridge calls of its own leave six requests, which
+ * are the user's own list, the team list and four teams. A user in more
+ * teams than this can still type the website ID in.
+ */
+export const MAX_TEAMS_READ = 4;
+
+/**
  * The admin's pages, as a "does not match" filter on the path. The prefix
  * is always written: without one Umami reads a leading `t.` or `c.` in the
  * value itself as an operator.
@@ -188,13 +196,12 @@ class UmamiProvider implements Provider {
 	 * filter that excludes them all can be seen. A website without traffic
 	 * in the range gives an empty list.
 	 *
-	 * Without one, the websites the key's user owns or manages through a
-	 * team. A website the user can only view is not in that list, which is
-	 * why the ID can also be typed in.
+	 * Without one, the websites the key's user can list: their own, and
+	 * those of the teams they belong to (`#listWebsites`).
 	 */
 	async discoverSites(range: DateRange): Promise<Result<Site[]>> {
 		const websiteId = this.#config.websiteId;
-		if (!websiteId) return await this.#websites();
+		if (!websiteId) return await this.#listWebsites();
 
 		const res = await this.#metrics("hostname", range, HOSTNAMES_LIMIT, { hosts: false });
 		if (res.ok) {
@@ -333,28 +340,57 @@ class UmamiProvider implements Provider {
 		return [...merged.values()];
 	}
 
+	/**
+	 * The user's own websites and their teams' websites, each website once.
+	 *
+	 * `/websites` lists what the user owns, and with `includeTeams` what
+	 * they own or manage through a team. A plain or view-only team member
+	 * may read a team's websites and is left out of that list, so each of
+	 * the user's teams is asked for its websites as well, which any member
+	 * may do. At most `MAX_TEAMS_READ` teams are read.
+	 *
+	 * The user's own list goes first and alone: a refused key fails there
+	 * and costs one request. After it, a team list or a team that does not
+	 * answer is left out and the rest still counts.
+	 */
+	async #listWebsites(): Promise<Result<Site[]>> {
+		const own = await this.#websites();
+		if (!own.ok) return own;
+
+		const teams = await this.#get("/me/teams", [["pageSize", String(MAX_TEAMS_READ)]]);
+		const teamIds = teams.ok
+			? pageRows(teams.value)
+					.map((row) => (isRecord(row) && typeof row.id === "string" ? row.id : ""))
+					.filter(Boolean)
+					.slice(0, MAX_TEAMS_READ)
+			: [];
+		const perTeam = await Promise.all(
+			teamIds.map((id) =>
+				this.#get(`/teams/${encodeURIComponent(id)}/websites`, [["pageSize", String(WEBSITES_LIMIT)]]),
+			),
+		);
+
+		const byId = new Map<string, Site>();
+		for (const site of own.value) byId.set(site.siteTag, site);
+		for (const res of perTeam) {
+			if (!res.ok) continue;
+			for (const site of sitesOf(pageRows(res.value))) {
+				if (!byId.has(site.siteTag)) byId.set(site.siteTag, site);
+			}
+		}
+		return { ok: true, value: [...byId.values()] };
+	}
+
+	/** What `/websites` lists for the key's user. A 401 here can only mean the key. */
 	async #websites(): Promise<Result<Site[]>> {
 		const res = await this.#get("/websites", [
-			["includeTeams", "1"],
+			["includeTeams", "true"],
 			["pageSize", String(WEBSITES_LIMIT)],
 		]);
 		if (!res.ok) return res.problem?.key === "umamiUnauthorized" ? failure("umamiBadKey") : res;
-
-		// A page of results: `{ data: [...], count, page, pageSize }`.
-		const rows = isRecord(res.value) ? res.value.data : res.value;
-		if (!Array.isArray(rows)) return failure("umamiUnexpected");
-
-		const sites: Site[] = [];
-		for (const row of rows) {
-			if (!isRecord(row) || typeof row.id !== "string" || !row.id) continue;
-			const host = typeof row.domain === "string" ? normalizeHost(row.domain) : "";
-			sites.push({
-				siteTag: row.id,
-				...(typeof row.name === "string" && row.name && { name: row.name }),
-				hosts: host ? [host] : [],
-			});
-		}
-		return { ok: true, value: sites };
+		if (!isRecord(res.value) && !Array.isArray(res.value)) return failure("umamiUnexpected");
+		if (isRecord(res.value) && !Array.isArray(res.value.data)) return failure("umamiUnexpected");
+		return { ok: true, value: sitesOf(pageRows(res.value)) };
 	}
 
 	async #metrics(
@@ -438,6 +474,26 @@ class UmamiProvider implements Provider {
 		if (response.status >= 300 && response.status < 400) return failure("umamiProxy", { status: response.status });
 		return failure("umamiHttp", { status: response.status });
 	}
+}
+
+/** The rows of a page of results, `{ data: [...], count, page, pageSize }`. */
+function pageRows(payload: unknown): unknown[] {
+	const rows = isRecord(payload) ? payload.data : payload;
+	return Array.isArray(rows) ? rows : [];
+}
+
+function sitesOf(rows: unknown[]): Site[] {
+	const sites: Site[] = [];
+	for (const row of rows) {
+		if (!isRecord(row) || typeof row.id !== "string" || !row.id) continue;
+		const host = typeof row.domain === "string" ? normalizeHost(row.domain) : "";
+		sites.push({
+			siteTag: row.id,
+			...(typeof row.name === "string" && row.name && { name: row.name }),
+			hosts: host ? [host] : [],
+		});
+	}
+	return sites;
 }
 
 function labelled(rows: MetricRow[], label: (name: string) => string): LabelledRow[] {

@@ -4,6 +4,7 @@ import type { FetchLike } from "../src/providers/types.js";
 import {
 	createUmamiProvider,
 	MAX_DAY_PATHS,
+	MAX_TEAMS_READ,
 	UMAMI_CLOUD_API,
 	umamiDashboardUrl,
 } from "../src/providers/umami.js";
@@ -378,26 +379,104 @@ describe("site discovery", () => {
 		pageSize: 100,
 	};
 
-	it("lists the websites the key's user can list when no website ID is set", async () => {
-		const { calls, fetch } = recorder(() => ({ body: websites }));
+	const teams = (...ids: string[]) => ({ data: ids.map((id) => ({ id, name: id })), count: ids.length, page: 1, pageSize: 4 });
+	const page = (...rows: Array<{ id: string; name?: string; domain?: string }>) => ({
+		data: rows,
+		count: rows.length,
+		page: 1,
+		pageSize: 100,
+	});
+	const refusal: Reply = { body: { error: { message: "Unauthorized", code: "unauthorized", status: 401 } }, status: 401 };
+
+	/** Answers the three list endpoints from a table keyed by path under `/v1`. */
+	const listing = (table: Record<string, Reply>) => (call: Call) =>
+		table[call.url.pathname.replace("/v1", "")] ?? { body: { error: {} }, status: 500 };
+
+	it("lists the user's own websites and their teams' websites, each once", async () => {
+		const { calls, fetch } = recorder(
+			listing({
+				"/websites": { body: websites },
+				"/me/teams": { body: teams("team-1", "team-2") },
+				"/teams/team-1/websites": { body: page({ id: "site-a", name: "Blog" }, { id: "site-c", name: "Docs", domain: "docs.example" }) },
+				"/teams/team-2/websites": { body: page({ id: "site-d", name: "Wiki" }) },
+			}),
+		);
 		const res = await provider(fetch, { websiteId: "" }).discoverSites(DISCOVERY);
 		expect(res).toEqual({
 			ok: true,
 			value: [
 				{ siteTag: "site-a", name: "Blog", hosts: ["example.com"] },
 				{ siteTag: "site-b", name: "Shop", hosts: ["shop.example"] },
+				{ siteTag: "site-c", name: "Docs", hosts: ["docs.example"] },
+				{ siteTag: "site-d", name: "Wiki", hosts: [] },
 			],
 		});
-		expect(calls).toHaveLength(1);
+		expect(calls).toHaveLength(4);
 		expect(calls[0]!.url.pathname).toBe("/v1/websites");
-		// Team websites are only in the list when asked for.
-		expect(calls[0]!.url.searchParams.has("includeTeams")).toBe(true);
+		// Websites of teams the user owns or manages are only in that list
+		// when asked for.
+		expect(calls[0]!.url.searchParams.get("includeTeams")).toBe("true");
 	});
 
-	it("says the key is wrong when the list itself is refused", async () => {
-		const { fetch } = recorder(() => ({ body: { error: { code: "unauthorized" } }, status: 401 }));
+	it("finds a team's websites for a member whose own list is empty", async () => {
+		// Verified on a live 3.4.0: a team member or view-only member gets
+		// `data: []` from /websites, with or without includeTeams, and may
+		// still read the team's websites.
+		const { fetch } = recorder(
+			listing({
+				"/websites": { body: page() },
+				"/me/teams": { body: teams("team-1") },
+				"/teams/team-1/websites": { body: page({ id: "site-t", name: "Team blog", domain: "blog.example" }) },
+			}),
+		);
+		expect(await provider(fetch, { websiteId: "" }).discoverSites(DISCOVERY)).toEqual({
+			ok: true,
+			value: [{ siteTag: "site-t", name: "Team blog", hosts: ["blog.example"] }],
+		});
+	});
+
+	it("reads four teams at most, so a discovery stays inside the bridge budget", async () => {
+		const { calls, fetch } = recorder((call) =>
+			call.url.pathname === "/v1/me/teams"
+				? { body: teams("t1", "t2", "t3", "t4", "t5", "t6") }
+				: { body: page({ id: `site-of${call.url.pathname.replace(/\W+/g, "-")}` }) },
+		);
+		const res = await provider(fetch, { websiteId: "" }).discoverSites(DISCOVERY);
+		expect(calls.map((call) => call.url.pathname)).toEqual([
+			"/v1/websites",
+			"/v1/me/teams",
+			"/v1/teams/t1/websites",
+			"/v1/teams/t2/websites",
+			"/v1/teams/t3/websites",
+			"/v1/teams/t4/websites",
+		]);
+		expect(calls[1]!.url.searchParams.get("pageSize")).toBe(String(MAX_TEAMS_READ));
+		expect(res.ok && res.value).toHaveLength(5);
+	});
+
+	it("keeps what it has when the team list, or one team, does not answer", async () => {
+		const noTeams = recorder(listing({ "/websites": { body: websites }, "/me/teams": refusal }));
+		const own = await provider(noTeams.fetch, { websiteId: "" }).discoverSites(DISCOVERY);
+		expect(own.ok && own.value.map((site) => site.siteTag)).toEqual(["site-a", "site-b"]);
+		expect(noTeams.calls).toHaveLength(2);
+
+		const oneTeam = recorder(
+			listing({
+				"/websites": { body: page() },
+				"/me/teams": { body: teams("team-1", "team-2") },
+				"/teams/team-1/websites": refusal,
+				"/teams/team-2/websites": { body: page({ id: "site-d" }) },
+			}),
+		);
+		const rest = await provider(oneTeam.fetch, { websiteId: "" }).discoverSites(DISCOVERY);
+		expect(rest.ok && rest.value.map((site) => site.siteTag)).toEqual(["site-d"]);
+	});
+
+	it("says the key is wrong when the user's own list is refused, after one request", async () => {
+		const { calls, fetch } = recorder(() => refusal);
 		const res = await provider(fetch, { websiteId: "" }).discoverSites(DISCOVERY);
 		expect(res).toMatchObject({ ok: false, problem: { key: "umamiBadKey" } });
+		expect(calls).toHaveLength(1);
 	});
 
 	it("reads the configured website's hostnames without the hostname filter", async () => {

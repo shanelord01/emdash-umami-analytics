@@ -13,9 +13,11 @@
  * first sync, and one discovery request to Cloudflare, which answers
  * access, site tag, the site list and the hostnames at once.
  *
- * Umami runs the same checks under its own names. Its discovery is one
- * request as well, and a second only when the first is refused, to tell a
- * wrong key from a website the key's user may not view.
+ * Umami runs the same checks under its own names. With a website ID set
+ * its discovery is one request as well, and a second only when the first
+ * is refused, to tell a wrong key from a website the key's user may not
+ * view. Without one it lists the user's websites and their teams', which
+ * is six requests at most and, with the four calls above, ten.
  */
 
 import type { PluginContext } from "emdash/plugin";

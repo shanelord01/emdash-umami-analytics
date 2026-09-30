@@ -11,6 +11,7 @@ import {
 	newHost,
 	NOW,
 	respondUmamiOverview,
+	respondUmamiWebsites,
 	seedDaily,
 	seedEntries,
 	setState,
@@ -379,10 +380,7 @@ describe("without a website ID", () => {
 	it("names the websites the key can list instead of syncing", async () => {
 		host = await newHost("umami");
 		await host.fixtures.plugin.setting("umamiWebsiteId", "");
-		await host.http.respond(
-			umamiUrl.websites(),
-			umamiJson({ data: [{ id: "site-a", name: "Blog", domain: "example.test" }], count: 1, page: 1, pageSize: 100 }),
-		);
+		await respondUmamiWebsites(host, [{ id: "site-a", name: "Blog", domain: "example.test" }]);
 
 		await tick(host)();
 
@@ -392,14 +390,36 @@ describe("without a website ID", () => {
 		expect(widget).toMatch(/No website ID set\. Websites this API key can list: site-a \(example\.test\)\./);
 	});
 
-	it("says where to find the ID when the key's user owns no website to list", async () => {
+	it("finds a team's website for a member who owns none", async () => {
+		// Umami's own list leaves out a plain or view-only team member, which
+		// is the user the README tells operators to create the key under.
 		host = await newHost("umami");
 		await host.fixtures.plugin.setting("umamiWebsiteId", "");
-		await host.http.respond(umamiUrl.websites(), umamiJson({ data: [], count: 0, page: 1, pageSize: 100 }));
+		await respondUmamiWebsites(host, [], [[{ id: "site-t", name: "Team blog", domain: "example.test" }]]);
+
+		await tick(host)();
+
+		expect(host.http.requests().map((r) => r.url)).toEqual([
+			umamiUrl.websites(),
+			umamiUrl.teams(),
+			umamiUrl.teamWebsites("team-0"),
+		]);
+		expect((await state(host)).lastProblem).toEqual({
+			key: "noWebsiteIdSites",
+			params: { sites: "site-t (example.test)" },
+		});
+	});
+
+	it("says where to find the ID when neither the user nor a team has a website to list", async () => {
+		host = await newHost("umami");
+		await host.fixtures.plugin.setting("umamiWebsiteId", "");
+		await respondUmamiWebsites(host, [], [[]]);
 
 		await tick(host)();
 
 		expect((await state(host)).lastProblem).toEqual({ key: "noWebsiteIdNoList" });
+		const widget = JSON.stringify((await host.admin.loadWidget("traffic")).blocks);
+		expect(widget).toMatch(/lists no website for this API key's user or their teams\. Copy the ID from the website's settings/);
 	});
 });
 
@@ -475,9 +495,10 @@ describe("the setup check", () => {
 	it("lists the websites to choose from while no website ID is set", async () => {
 		host = await newHost("umami");
 		await host.fixtures.plugin.setting("umamiWebsiteId", "");
-		await host.http.respond(
-			umamiUrl.websites(),
-			umamiJson({ data: [{ id: UMAMI_WEBSITE, name: "Blog", domain: "example.test" }], count: 1, page: 1, pageSize: 100 }),
+		await respondUmamiWebsites(
+			host,
+			[{ id: UMAMI_WEBSITE, name: "Blog", domain: "example.test" }],
+			[[{ id: "site-t", name: "Team shop", domain: "shop.example.test" }]],
 		);
 
 		const { row, text } = await openSetup(host);
@@ -486,6 +507,7 @@ describe("the setup check", () => {
 		expect(text).toMatch(/Websites this API key can list/);
 		expect(text).toContain(UMAMI_WEBSITE);
 		expect(text).toContain("Blog");
+		expect(text).toContain("Team shop");
 		// The list has no page views to show, so it has no such column.
 		expect(text).not.toMatch(/"key":"views"/);
 	});

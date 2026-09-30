@@ -68,8 +68,31 @@ export const umamiUrl = {
 		`https://api.umami.is/v1/websites/${UMAMI_WEBSITE}/metrics/expanded?${umamiRange(day, day)}&${UMAMI_FILTERS}&type=path&limit=10000`,
 	hostnames: (since: string, until: string) =>
 		`https://api.umami.is/v1/websites/${UMAMI_WEBSITE}/metrics/expanded?${umamiRange(since, until)}&path=${encodeURIComponent("nre.^/_emdash(/|$)")}&type=hostname&limit=50`,
-	websites: () => "https://api.umami.is/v1/websites?includeTeams=1&pageSize=100",
+	websites: () => "https://api.umami.is/v1/websites?includeTeams=true&pageSize=100",
+	teams: () => "https://api.umami.is/v1/me/teams?pageSize=4",
+	teamWebsites: (teamId: string) => `https://api.umami.is/v1/teams/${teamId}/websites?pageSize=100`,
 };
+
+/** A page of results, as Umami's list endpoints answer. */
+export function umamiPage(rows: unknown[]): Response {
+	return umamiJson({ data: rows, count: rows.length, page: 1, pageSize: 100 });
+}
+
+/**
+ * Answer a website discovery: the user's own websites, and one team per
+ * entry of `teams` with that team's websites.
+ */
+export async function respondUmamiWebsites(
+	runtime: PluginRuntimeTestHost,
+	own: Array<{ id: string; name?: string; domain?: string }>,
+	teams: Array<Array<{ id: string; name?: string; domain?: string }>> = [],
+) {
+	await runtime.http.respond(umamiUrl.websites(), umamiPage(own));
+	await runtime.http.respond(umamiUrl.teams(), umamiPage(teams.map((_, i) => ({ id: `team-${i}`, name: `Team ${i}` }))));
+	for (const [i, websites] of teams.entries()) {
+		await runtime.http.respond(umamiUrl.teamWebsites(`team-${i}`), umamiPage(websites));
+	}
+}
 
 export function umamiJson(body: unknown, status = 200): Response {
 	return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });

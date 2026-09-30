@@ -14,6 +14,7 @@ import {
 	NOW,
 	pathsOf,
 	respondUmamiOverview,
+	respondUmamiWebsites,
 	routableCollection,
 	seedDaily,
 	seedEntries,
@@ -377,21 +378,49 @@ describe("Umami, which answers one day per request", () => {
 		});
 	});
 
-	it("a tick without a website ID, which lists the websites instead", async () => {
+	/** As many teams as one discovery reads, each with a website of its own. */
+	const fourTeams = ["a", "b", "c", "d"].map((t) => [{ id: `site-${t}`, domain: `${t}.example.test` }]);
+
+	it("a tick without a website ID, which lists the user's and four teams' websites instead", async () => {
 		host = await newHost("umami");
 		await host.fixtures.plugin.setting("umamiWebsiteId", "");
-		await host.http.respond(umamiUrl.websites(), umamiJson({ data: [{ id: "site-a", domain: "example.test" }] }));
+		await respondUmamiWebsites(host, [{ id: "site-own", domain: "example.test" }], fourTeams);
 
 		const calls = await bridgeCalls(tick(host));
 
 		expect(calls.length, calls.join(", ")).toBeLessThanOrEqual(LIMIT);
-		expect((await host.inspect.kv.get<SyncState>("state"))?.lastProblem?.key).toBe("noWebsiteIdSites");
+		expect(host.http.requests()).toHaveLength(6);
+		expect((await host.inspect.kv.get<SyncState>("state"))?.lastProblem).toEqual({
+			key: "noWebsiteIdSites",
+			params: {
+				sites: "site-own (example.test), site-a (a.example.test), site-b (b.example.test), site-c (c.example.test), site-d (d.example.test)",
+			},
+		});
+	});
+
+	it("a setup check without a website ID, which lists the same", async () => {
+		// The tightest discovery: the check's own four calls leave six
+		// requests, which is what caps the teams read at four.
+		host = await newHost("umami");
+		await host.fixtures.plugin.setting("umamiWebsiteId", "");
+		await respondUmamiWebsites(host, [{ id: "site-own", domain: "example.test" }], fourTeams);
+
+		let blocks: unknown;
+		const calls = await bridgeCalls(async () => {
+			blocks = (await host!.admin.act("/analytics", SETUP_ACTION, { value: 30 })).blocks;
+		});
+
+		expect(calls.length, calls.join(", ")).toBeLessThanOrEqual(LIMIT);
+		expect(host.http.requests()).toHaveLength(6);
+		expect(JSON.stringify(blocks)).toContain("site-d");
 	});
 
 	it("a setup check whose website is refused, which asks a second time", async () => {
 		host = await newHost("umami");
 		await host.http.respond(umamiUrl.hostnames(addDays(TODAY, -6), TODAY), refused());
 		await host.http.respond(umamiUrl.websites(), umamiJson({ data: [] }));
+		// Telling the key from the website takes the user's own list only.
+		await respondUmamiWebsites(host, [], fourTeams);
 
 		const calls = await bridgeCalls(() => host!.admin.act("/analytics", SETUP_ACTION, { value: 30 }));
 

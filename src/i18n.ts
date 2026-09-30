@@ -154,7 +154,7 @@ const en = {
 	needsAccessUmami: "Needs working Umami access.",
 	websiteIdMissing: "No website ID set. Copy one from the list below into Umami website ID in the plugin's settings.",
 	websiteIdMissingNoList:
-		"No website ID set, and Umami lists no website for this API key, which is what it answers for a user who can only view a website. Copy the ID from the website's settings in Umami into Umami website ID in the plugin's settings.",
+		"No website ID set, and Umami lists no website for this API key's user or their teams. Copy the ID from the website's settings in Umami into Umami website ID in the plugin's settings.",
 	websiteNoTraffic:
 		"Umami reported no page views for this website in the last {days} days. Check that the tracking script is on the site.",
 	needsWebsiteId: "Needs a website ID with traffic.",
@@ -165,7 +165,7 @@ const en = {
 	colWebsiteId: "Website ID",
 	colName: "Name",
 	websitesNote:
-		"Websites the API key's user owns or manages through a team, and for the configured website the hostnames it reported in the last {days} days. A website the user can only view is not listed: copy its ID from the website's settings in Umami.",
+		"Websites the API key's user owns and the websites of that user's teams, up to four teams, and for the configured website the hostnames it reported in the last {days} days. An ID can also be copied from the website's settings in Umami.",
 
 	demoData: "Demo data, not real traffic",
 	synced: "Synced {age}",
@@ -203,7 +203,7 @@ const en = {
 		"No site tag set, and this account reported no Web Analytics traffic in the last 30 days. Check that the beacon is on the site.",
 	noWebsiteIdSites: "No website ID set. Websites this API key can list: {sites}.",
 	noWebsiteIdNoList:
-		"No website ID set, and Umami lists no website for this API key, which is what it answers for a user who can only view a website. Copy the ID from the website's settings in Umami into the plugin's settings.",
+		"No website ID set, and Umami lists no website for this API key's user or their teams. Copy the ID from the website's settings in Umami into the plugin's settings.",
 	indexingFailed: "Indexing content failed: {detail}",
 	summingFailed: "Summing the 30-day views failed: {detail}",
 	historyFailed: "Reading earlier days failed: {detail}",
@@ -392,7 +392,7 @@ const de: Record<MessageKey, Message> = {
 	websiteIdMissing:
 		"Keine Website-ID eingetragen. Übernimm eine aus der Liste unten in das Feld Umami website ID in den Einstellungen des Plugins.",
 	websiteIdMissingNoList:
-		"Keine Website-ID eingetragen, und Umami listet für diesen API-Schlüssel keine Website auf: Das ist die Antwort für einen Benutzer, der eine Website nur ansehen darf. Übernimm die ID aus den Einstellungen der Website in Umami in das Feld Umami website ID in den Einstellungen des Plugins.",
+		"Keine Website-ID eingetragen, und Umami listet für den Benutzer dieses API-Schlüssels und seine Teams keine Website auf. Übernimm die ID aus den Einstellungen der Website in Umami in das Feld Umami website ID in den Einstellungen des Plugins.",
 	websiteNoTraffic:
 		"Umami hat für diese Website in den letzten {days} Tagen keine Seitenaufrufe gemeldet. Prüfe, ob das Tracking-Skript auf der Website eingebunden ist.",
 	needsWebsiteId: "Braucht eine Website-ID mit Traffic.",
@@ -403,7 +403,7 @@ const de: Record<MessageKey, Message> = {
 	colWebsiteId: "Website-ID",
 	colName: "Name",
 	websitesNote:
-		"Websites, die dem Benutzer des API-Schlüssels gehören oder die er über ein Team verwaltet, und für die eingetragene Website die Hostnamen, die sie in den letzten {days} Tagen gemeldet hat. Eine Website, die der Benutzer nur ansehen darf, steht nicht in der Liste: Übernimm ihre ID aus den Einstellungen der Website in Umami.",
+		"Websites, die dem Benutzer des API-Schlüssels gehören, und die Websites seiner Teams, bis zu vier Teams, und für die eingetragene Website die Hostnamen, die sie in den letzten {days} Tagen gemeldet hat. Eine ID lässt sich auch aus den Einstellungen der Website in Umami übernehmen.",
 
 	demoData: "Demodaten, keine echten Besuche",
 	synced: "Synchronisiert {age}",
@@ -443,7 +443,7 @@ const de: Record<MessageKey, Message> = {
 		"Kein Site-Tag gesetzt, und dieses Konto hat in den letzten 30 Tagen keine Web-Analytics-Besuche gemeldet. Prüfe, ob das Beacon auf der Webseite eingebunden ist.",
 	noWebsiteIdSites: "Keine Website-ID gesetzt. Websites, die dieser API-Schlüssel auflisten kann: {sites}.",
 	noWebsiteIdNoList:
-		"Keine Website-ID gesetzt, und Umami listet für diesen API-Schlüssel keine Website auf: Das ist die Antwort für einen Benutzer, der eine Website nur ansehen darf. Übernimm die ID aus den Einstellungen der Website in Umami in die Einstellungen des Plugins.",
+		"Keine Website-ID gesetzt, und Umami listet für den Benutzer dieses API-Schlüssels und seine Teams keine Website auf. Übernimm die ID aus den Einstellungen der Website in Umami in die Einstellungen des Plugins.",
 	indexingFailed: "Das Indizieren der Inhalte ist fehlgeschlagen: {detail}",
 	summingFailed: "Das Summieren der Aufrufe über 30 Tage ist fehlgeschlagen: {detail}",
 	historyFailed: "Das Lesen früherer Tage ist fehlgeschlagen: {detail}",
