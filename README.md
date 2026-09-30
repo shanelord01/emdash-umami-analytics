@@ -7,6 +7,11 @@ with Umami Cloud and with a self-hosted Umami.
 The plugin only reads. It needs a Umami API key, and it never changes
 anything in Umami or in your content.
 
+It is tested with a self-hosted Umami 3.4.0. The Umami Cloud connection
+is untested: it follows Umami's published API, and has not been run
+against a Cloud account. If you use it with Umami Cloud, please report
+what you find in the repository's issues.
+
 ## What it adds to the admin
 
 | Where | What you see |
@@ -22,7 +27,7 @@ anything in Umami or in your content.
 | | |
 |---|---|
 | EmDash | 1.0.1 or later, with a plugin sandbox runner configured (registry plugins run in the sandbox) |
-| Umami | Umami Cloud, or a self-hosted Umami 3.4.0 or later. 3.4.0 is the first self-hosted release with API keys |
+| Umami | A self-hosted Umami 3.4.0 or later (3.4.0 is the first self-hosted release with API keys), or Umami Cloud, which is untested |
 | A website in Umami | with Umami's tracking script already on your site |
 | An API key | see "Create the Umami key" below |
 | `EMDASH_ENCRYPTION_KEY` | set on the site, so the API key can be stored encrypted. `npx emdash secrets generate` makes one |
@@ -66,7 +71,7 @@ Open Plugins in the admin, then the plugin's settings.
 | Data source | Umami. Demo data is for trying the plugin without Umami (see below) |
 | Umami API key | The key from the step above. It is stored encrypted |
 | Umami website ID | The ID from the website's settings in Umami. If you leave it empty, the dashboard card lists the websites the key can see so you can copy one |
-| Umami API URL | Leave as it is for Umami Cloud. For a self-hosted Umami enter `https://your-host/api` |
+| Umami API URL | For a self-hosted Umami enter `https://your-host/api`. The default is Umami Cloud's address, which is untested |
 | Hostnames to count | Leave empty to count your site URL and its `www` form. Enter a comma-separated list to count other hostnames |
 | Sync every | 15 minutes by default |
 | Keep daily rows for | 90 days by default, 400 at most. The plugin reads this far back from Umami after install |
@@ -185,6 +190,7 @@ Umami Cloud account, or wherever you host your own.
 
 ## Not in this version
 
+- A tested Umami Cloud connection. See the note at the top.
 - Visitors. Umami counts them, and no page shows them yet.
 - Referrers and countries for longer ranges when Umami cannot be reached.
   The Analytics page reads them from Umami, and falls back to the last
