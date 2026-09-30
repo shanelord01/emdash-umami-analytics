@@ -305,7 +305,7 @@ describe("the manifest the host actually loaded", () => {
 		};
 
 		expect(manifest.capabilities).toEqual(["content:read", "schema:read", "network:request"]);
-		expect(manifest.allowedHosts).toEqual(["api.cloudflare.com"]);
+		expect(manifest.allowedHosts).toEqual(["api.cloudflare.com", "api.umami.is"]);
 		expect(Object.keys(manifest.storage).sort()).toEqual(["daily", "entries", "rollup"]);
 		// Sorting the content page by these needs them declared as indexes.
 		expect(manifest.storage.entries!.indexes).toEqual(

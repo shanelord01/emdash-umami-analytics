@@ -22,21 +22,30 @@
  * than doing both, which is what keeps either side inside the budget.
  * Work that needs no provider (walking the content, summing stored days)
  * borrows paths slots rather than adding calls to one.
+ *
+ * A provider that answers one day per request (`batchPaths: "wide-pull"`)
+ * cannot fill the paths phase's window in one fetch. Its paths tick asks
+ * for today and reads the other days from the store, and a history pass
+ * (`./history.ts`) borrows paths slots to read closed days, one per step:
+ * three slots of every four while it has earlier days to catch up on,
+ * every other slot at most afterwards.
  */
 
 import type { PluginContext } from "emdash/plugin";
 
-import { failure, type Problem } from "../i18n.js";
+import { failure, type MessageKey, type Problem } from "../i18n.js";
 import { bootstrapIndex, INDEX_VERSION, type IndexCursor } from "../index/bootstrap.js";
 import { createCloudflareProvider } from "../providers/cloudflare.js";
 import { createDemoProvider } from "../providers/demo.js";
+import { createUmamiProvider } from "../providers/umami.js";
 import type { DateRange, Overview, Provider, ProviderId } from "../providers/types.js";
 import { chunk, dailyStore, entriesStore, rollupStore, BIND_LIMIT, ID_BATCH } from "../store/access.js";
 import { dailyId, decideWrite, type DailyRow, type EntryRow, type RollupRow } from "../store/rows.js";
 import { recentViewsOf, withRecent } from "../store/views.js";
 import { missingSettingsMessage, readSettings, type AnalyticsSettings } from "../settings.js";
+import { historyBackfilling, historyDue, runHistoryStep, type HistoryPass } from "./history.js";
 import { olderDue, olderSettled, runOlderStep, type OlderPass } from "./older.js";
-import { backfillWindow, syncWindow, utcDay, UNSAMPLED_WINDOW_DAYS, type Day } from "./window.js";
+import { addDays, backfillWindow, enumerateDays, syncWindow, utcDay, UNSAMPLED_WINDOW_DAYS, type Day } from "./window.js";
 
 export const SYNC_TASK = "sync";
 export const RECONCILE_TASK = "reconcile";
@@ -114,12 +123,17 @@ export interface SyncState {
 	rebuild?: boolean;
 	/** Today's pass summing the older part of `views30`. */
 	older?: OlderPass;
+	/** Which closed days a wide-pull provider has been read for. */
+	history?: HistoryPass;
+	/** History steps taken in a row, counted while `lastWork` says the last slot was one. */
+	historyRun?: number;
 	/**
 	 * What the last non-overview slot did. A repair walk or the older pass
 	 * takes every other slot, never two in a row, so view counts keep
-	 * updating while they run.
+	 * updating while they run. So does the history pass, except while it
+	 * is catching up (`HISTORY_BACKFILL_RUN`).
 	 */
-	lastWork?: "index" | "older" | "paths";
+	lastWork?: "index" | "older" | "history" | "paths";
 	/** The provider whose numbers are in storage. */
 	provider?: ProviderId;
 	/** True once the first overview has pulled the provider's exact window. */
@@ -146,6 +160,26 @@ const PRUNE_BATCHES = 4;
  * read, the settings read and the state write.
  */
 const OLDER_CALLS = 7;
+
+/**
+ * Bridge calls a history step may spend on the provider and on storage:
+ * ten, less the state read, the settings read and the state write.
+ */
+const HISTORY_CALLS = 7;
+
+/**
+ * History steps in a row while the pass still has earlier days to read,
+ * before the paths tick gets the slot again.
+ *
+ * Every slot would finish soonest, but the paths tick is the only thing
+ * that writes an entry's view counts: without a turn, the per-entry page
+ * of a new install would stay at zero until the whole backfill was done,
+ * and the days the pass reads would not reach those counts either. Three
+ * to one reads 90 days in about two and a half days at the default
+ * interval, against just under two for every slot, and gives the paths
+ * tick 36 entries every two hours meanwhile.
+ */
+const HISTORY_BACKFILL_RUN = 3;
 
 export interface SyncOutcome {
 	phase: SyncState["phase"];
@@ -226,6 +260,15 @@ export function buildProvider(ctx: PluginContext, settings: AnalyticsSettings): 
 	}
 	if (!ctx.http) return null;
 	const http = ctx.http;
+	if (settings.provider === "umami") {
+		return createUmamiProvider({
+			apiKey: settings.apiToken,
+			websiteId: settings.siteTag,
+			hosts: settings.hosts,
+			trailingSlash: ctx.site.trailingSlash,
+			fetch: (url, init) => http.fetch(url, init),
+		});
+	}
 	return createCloudflareProvider({
 		apiToken: settings.apiToken,
 		accountId: settings.accountId,
@@ -245,9 +288,16 @@ export function buildProvider(ctx: PluginContext, settings: AnalyticsSettings): 
  * Paths phase: kv.get, settings.list, entries.query, fetch, up to three
  * daily.getMany, daily.putMany, entries.putMany, kv.set — ten at most.
  *
+ * A wide-pull provider spends the same ten differently. Its overview
+ * makes five fetches, which with the five calls around them is ten. Its
+ * paths phase makes one fetch for today and always reads three
+ * daily.getMany, which is ten as well.
+ *
  * The paths slot also carries the background work: the first index walk
- * takes it outright, and a repair walk or a step of the daily older pass
- * takes every other one.
+ * takes it outright, and a repair walk, a step of the daily older pass or
+ * a step of a wide-pull provider's history pass takes every other one.
+ * While the history pass is catching up on earlier days it also takes
+ * the two slots after its own, so three of every four.
  *
  * `overview` runs the overview phase whatever the alternation says: a
  * Refresh is asked for to update the totals, which only that phase reads.
@@ -293,12 +343,35 @@ export async function runSync(
 	// paths phase can only ask about paths the index already knows.
 	if (!state.indexComplete) return await runIndexPhase(ctx, state, now);
 
-	if (state.lastWork !== "index" && state.lastWork !== "older") {
+	if (state.lastWork !== "index" && state.lastWork !== "older" && state.lastWork !== "history") {
 		if (indexOutdated(state)) return await runIndexPhase(ctx, state, now);
 		if (olderDue(state.older, utcDay(now))) return await runOlderPhase(ctx, state, now);
+		if (isWidePull(provider) && historyDue(state.history, utcDay(now), historyFloor(settings, now))) {
+			return await runHistoryPhase(ctx, provider, settings, state, now);
+		}
+	} else if (
+		isWidePull(provider) &&
+		state.lastWork === "history" &&
+		(state.historyRun ?? 1) < HISTORY_BACKFILL_RUN &&
+		historyBackfilling(state.history, historyFloor(settings, now))
+	) {
+		// Still catching up on earlier days: the pass keeps the slot. The
+		// index walk and the older pass wait for the slot after a paths tick,
+		// where they come first as always.
+		return await runHistoryPhase(ctx, provider, settings, state, now);
 	}
 
 	return await runPathsPhase(ctx, provider, settings, state, now);
+}
+
+/** Does the provider answer one day per request, so that closed days arrive through the history pass? */
+function isWidePull(provider: Provider): boolean {
+	return provider.capabilities.batchPaths === "wide-pull";
+}
+
+/** The oldest day worth reading: the first one `reconcile` would keep. */
+function historyFloor(settings: AnalyticsSettings, now: Date): Day {
+	return addDays(utcDay(now), -settings.retentionDays);
 }
 
 /** Does the stored index come from an older walk, or has a rebuild been asked for? */
@@ -346,11 +419,14 @@ async function runOverviewPhase(
 ): Promise<SyncOutcome> {
 	// The first overview reaches back as far as the provider stays exact, so
 	// a fresh install starts with that much history (Cloudflare: eight days,
-	// demo: ninety).
+	// demo: ninety). A wide-pull provider's overview carries two days of
+	// totals whatever the range, so it has nothing to gain from a wider
+	// first window: its history arrives through the history pass.
 	const exactDays = provider.capabilities.exactWindowDays;
-	const range = state.backfilled
-		? syncWindow(now, OVERVIEW_DAYS_BACK, exactDays)
-		: backfillWindow(now, exactDays);
+	const range =
+		state.backfilled || isWidePull(provider)
+			? syncWindow(now, OVERVIEW_DAYS_BACK, exactDays)
+			: backfillWindow(now, exactDays);
 	const res = await provider.overview(range);
 	if (!res.ok) return await fail(ctx, state, "overview", res.error, now, res.problem);
 
@@ -440,6 +516,54 @@ async function runOlderPhase(ctx: PluginContext, state: SyncState, now: Date): P
 	return { phase: "paths", ok: true, written: result.written, skipped: 0 };
 }
 
+/**
+ * One step of a wide-pull provider's history pass.
+ *
+ * Calls: kv.get, settings.list, then at most seven on the provider and on
+ * storage (see `runHistoryStep`), kv.set.
+ */
+async function runHistoryPhase(
+	ctx: PluginContext,
+	provider: Provider,
+	settings: AnalyticsSettings,
+	state: SyncState,
+	now: Date,
+): Promise<SyncOutcome> {
+	// Recorded as done either way, and counted, so a pass that keeps failing
+	// still leaves the paths tick its slots.
+	const historyRun = state.lastWork === "history" ? (state.historyRun ?? 1) + 1 : 1;
+	const failed = { ...state, lastWork: "history" as const, historyRun };
+	let result;
+	try {
+		result = await runHistoryStep(
+			ctx,
+			provider,
+			state.history,
+			utcDay(now),
+			historyFloor(settings, now),
+			HISTORY_CALLS,
+			now,
+		);
+	} catch (error) {
+		const reading = failure("historyFailed", { detail: String(error) });
+		return await fail(ctx, failed, "paths", reading.error, now, reading.problem);
+	}
+	if (!result.ok) return await fail(ctx, failed, "paths", result.error, now, result.problem);
+
+	await writeState(ctx, {
+		...state,
+		phase: "overview",
+		lastWork: "history",
+		historyRun,
+		provider: provider.id,
+		lastSync: now.toISOString(),
+		...clearedErrors(state, "paths"),
+		history: result.value.pass,
+	});
+
+	return { phase: "paths", ok: true, written: result.value.written, skipped: result.value.skipped };
+}
+
 async function runPathsPhase(
 	ctx: PluginContext,
 	provider: Provider,
@@ -454,7 +578,11 @@ async function runPathsPhase(
 		return await fail(ctx, state, "paths", error, now, problem);
 	}
 
-	const range = syncWindow(now, PATHS_WINDOW_DAYS);
+	// A wide-pull provider is asked for today alone, which is one request.
+	// The other days of the window are read from the store further down.
+	const wide = isWidePull(provider);
+	const recent = syncWindow(now, PATHS_WINDOW_DAYS);
+	const range = wide ? { since: recent.until, until: recent.until } : recent;
 
 	// Ordering by `path` rather than insertion order because `path` is a
 	// declared index and storage rejects an orderBy on anything else. It
@@ -501,7 +629,12 @@ async function runPathsPhase(
 	// Read before write. Without this the tick re-writes every row every
 	// 15 minutes, which on D1's free plan is roughly 2.2x the daily budget
 	// before the site's own writes are counted.
-	const ids = [...fetched.keys()];
+	//
+	// For a wide-pull provider the same read also fetches the days it was
+	// not asked for, so it covers every path on every day of the window.
+	const ids = wide
+		? enumerateDays(recent.since, recent.until).flatMap((day) => paths.map((path) => dailyId(day, path)))
+		: [...fetched.keys()];
 	const existing = new Map<string, DailyRow>();
 	for (const slice of chunk(ids)) {
 		for (const [id, row] of await daily.getMany(slice)) existing.set(id, row);
@@ -524,6 +657,17 @@ async function runPathsPhase(
 		const rows = perPath.get(row.path) ?? [];
 		rows.push(row);
 		perPath.set(row.path, rows);
+	}
+	// A wide-pull provider's window is today from the response and the days
+	// before it from the store, where the history pass and earlier ticks
+	// left them.
+	if (wide) {
+		for (const row of existing.values()) {
+			if (row.date === today) continue;
+			const rows = perPath.get(row.path) ?? [];
+			rows.push(row);
+			perPath.set(row.path, rows);
+		}
 	}
 
 	const settled = olderSettled(state.older, today);
@@ -581,6 +725,11 @@ export async function runReconcile(
 	return { deleted, more };
 }
 
+/** The site hint's sentences for a provider that does not call its sites site tags. */
+const SITE_HINTS: Partial<Record<ProviderId, { sites: MessageKey; none: MessageKey }>> = {
+	umami: { sites: "noWebsiteIdSites", none: "noWebsiteIdNoList" },
+};
+
 /**
  * No site tag configured: name the sites this token can actually see.
  *
@@ -588,6 +737,9 @@ export async function runReconcile(
  * `rum/site_info/list`, which needs Account Settings Read — a scope that
  * also grants read access to account membership, and not something to ask
  * for so a dropdown can be populated.
+ *
+ * The hint is worded in the provider's own terms: a site tag on
+ * Cloudflare, a website ID on Umami.
  */
 async function suggestSite(
 	ctx: PluginContext,
@@ -601,15 +753,16 @@ async function suggestSite(
 	};
 	const res = await provider.discoverSites(range);
 
+	const hint = SITE_HINTS[provider.id] ?? { sites: "noSiteTagSites", none: "noSiteTagNoTraffic" };
 	const found = res.ok
 		? res.value.length > 0
-			? failure("noSiteTagSites", {
+			? failure(hint.sites, {
 					sites: res.value
 						.slice(0, 5)
 						.map((s) => `${s.siteTag}${s.hosts[0] ? ` (${s.hosts[0]})` : ""}`)
 						.join(", "),
 				})
-			: failure("noSiteTagNoTraffic")
+			: failure(hint.none)
 		: res;
 
 	await writeState(ctx, {

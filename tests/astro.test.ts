@@ -207,3 +207,42 @@ function runInFakeDom(code: string, pathname: string, windowExtras: Record<strin
 	fn({ pathname }, document, windowObj);
 	return state;
 }
+
+describe("the Umami beacon", () => {
+	const umami = { provider: "umami" as const, websiteId: "11111111-2222-4333-8444-555555555555" };
+
+	it("loads Umami Cloud's tracker with the website ID and nothing of Cloudflare's", () => {
+		const dom = runInFakeDom(buildBeaconScript(umami), "/");
+		expect(dom.appended).toBe(1);
+		expect(dom.src).toBe("https://cloud.umami.is/script.js");
+		expect(dom.attributes).toEqual({ "data-website-id": umami.websiteId });
+	});
+
+	it("limits the tracker to the named hostnames", () => {
+		const dom = runInFakeDom(buildBeaconScript({ ...umami, domains: ["example.com", "www.example.com"] }), "/");
+		expect(dom.attributes["data-domains"]).toBe("example.com,www.example.com");
+	});
+
+	it("needs a website ID, not a token, and says so when it is missing", () => {
+		expect(run(umami).injectScript).toHaveBeenCalledTimes(1);
+
+		const { injectScript, warn } = run({ provider: "umami", token: "tok" });
+		expect(injectScript).not.toHaveBeenCalled();
+		expect(warn.mock.calls[0]![0]).toMatch(/websiteId/);
+	});
+
+	it("skips the admin and waits for consent like the Cloudflare beacon", () => {
+		expect(runInFakeDom(buildBeaconScript(umami), "/_emdash/admin").appended).toBe(0);
+
+		const dom = runInFakeDom(buildBeaconScript({ ...umami, consent: { event: "go" } }), "/");
+		expect(dom.appended).toBe(0);
+		dom.listeners["go"]![0]!();
+		expect(dom.appended).toBe(1);
+	});
+
+	it("cannot be terminated early by a crafted value", () => {
+		const code = buildBeaconScript({ ...umami, websiteId: "a</script><script>alert(1)</script>" });
+		expect(code).not.toContain("</script>");
+		expect(() => new Function(code)).not.toThrow();
+	});
+});

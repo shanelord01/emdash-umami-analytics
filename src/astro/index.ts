@@ -17,10 +17,10 @@
  * `pnpm query-counts` flat.
  */
 
-export type BeaconProvider = "cloudflare";
+export type BeaconProvider = "cloudflare" | "umami";
 
 export interface AnalyticsBeaconOptions {
-	/** Only Cloudflare in v1; named so the option does not have to change later. */
+	/** Whose beacon to inject. Cloudflare's unless said otherwise. */
 	provider?: BeaconProvider;
 	/**
 	 * The Cloudflare Web Analytics **site token** — the `token` value in the
@@ -37,6 +37,16 @@ export interface AnalyticsBeaconOptions {
 	 * opt out; leaving it unset keeps Cloudflare's own default.
 	 */
 	spa?: boolean;
+	/**
+	 * Umami: the website ID, the `data-website-id` value in Umami's tracking
+	 * code. The CMS side of this plugin takes the same value.
+	 */
+	websiteId?: string;
+	/**
+	 * Umami: hostnames the tracker may report from (`data-domains`). On any
+	 * other host, a preview deploy for one, it stays silent.
+	 */
+	domains?: string[];
 	/**
 	 * Gate the beacon behind a consent event.
 	 *
@@ -72,6 +82,7 @@ export interface AnalyticsBeaconOptions {
 }
 
 const BEACON_SRC = "https://static.cloudflareinsights.com/beacon.min.js";
+const UMAMI_SCRIPT_SRC = "https://cloud.umami.is/script.js";
 
 /** The admin lives here and its pages have their own `<head>`. */
 const ADMIN_PREFIX = "/_emdash";
@@ -99,15 +110,22 @@ export function analyticsBeacon(options: AnalyticsBeaconOptions = {}): AstroInte
 		name: "@eisbachcode/emdash-plugin-analytics/astro",
 		hooks: {
 			"astro:config:setup": ({ command, injectScript, logger }) => {
-				if (provider !== "cloudflare") {
+				if (provider !== "cloudflare" && provider !== "umami") {
 					logger.warn(`Unknown analytics provider "${provider}"; no beacon injected.`);
+					return;
+				}
+
+				if (provider === "umami" && !options.websiteId) {
+					logger.warn(
+						"analyticsBeacon(): no `websiteId` given, so no beacon was injected. Pass the Umami website ID (the `data-website-id` value in Umami's tracking code).",
+					);
 					return;
 				}
 
 				// A missing token is named out loud rather than no-op'd: a
 				// silent no-op here is a site that collects nothing and looks
 				// fine, which is the failure mode nobody notices for weeks.
-				if (!options.token) {
+				if (provider === "cloudflare" && !options.token) {
 					logger.warn(
 						"analyticsBeacon(): no `token` given, so no beacon was injected. Pass the Cloudflare Web Analytics site token (the `token` value in the beacon snippet, not the site tag).",
 					);
@@ -145,18 +163,33 @@ export function buildBeaconScript(options: AnalyticsBeaconOptions): string {
 	const beaconConfig: Record<string, unknown> = { token: options.token };
 	if (options.spa === false) beaconConfig.spa = false;
 
-	// JSON.stringify twice: once for the attribute value Cloudflare parses,
-	// once so the result is a safe JavaScript string literal. `</script>`
-	// inside an inline script would otherwise end the element early.
-	const configLiteral = JSON.stringify(JSON.stringify(beaconConfig)).replace(/</g, "\\u003c");
-	const srcLiteral = JSON.stringify(BEACON_SRC);
+	// The vendor script and the attributes it reads its configuration from.
+	// Cloudflare parses one JSON attribute, which is why its value is
+	// stringified here and again below.
+	const umami = options.provider === "umami";
+	const src = umami ? UMAMI_SCRIPT_SRC : BEACON_SRC;
+	const attributes: Array<[string, string]> = umami
+		? [
+				["data-website-id", options.websiteId ?? ""],
+				...(options.domains?.length ? [["data-domains", options.domains.join(",")] as [string, string]] : []),
+			]
+		: [["data-cf-beacon", JSON.stringify(beaconConfig)]];
+
+	// Every value becomes a JavaScript string literal with `<` escaped:
+	// `</script>` inside an inline script would otherwise end the element
+	// early.
+	const literal = (value: string) => JSON.stringify(value).replace(/</g, "\\u003c");
 	const adminLiteral = JSON.stringify(ADMIN_PREFIX);
 
 	const inject = `
 		var s = document.createElement("script");
 		s.defer = true;
-		s.src = ${srcLiteral};
-		s.setAttribute("data-cf-beacon", ${configLiteral});
+		s.src = ${literal(src)};${attributes
+			.map(
+				([name, value]) => `
+		s.setAttribute(${literal(name)}, ${literal(value)});`,
+			)
+			.join("")}
 		(document.head || document.documentElement).appendChild(s);`;
 
 	const gate = options.consent

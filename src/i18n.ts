@@ -32,6 +32,7 @@ const en = {
 	refresh: "Refresh",
 	openAnalytics: "Open analytics",
 	openInCloudflare: "Open in Cloudflare",
+	openInUmami: "Open in Umami",
 	rangeDays: { one: "{count} day", other: "{count} days" },
 	topEntries: "Top entries",
 	referrers: "Referrers",
@@ -142,6 +143,30 @@ const en = {
 	sitesNote:
 		"Sites with page views in the last {days} days. In the Cloudflare dashboard, the site tag is also the ID at the end of the site's Manage site link.",
 
+	checkCredentialsUmami: "API key",
+	checkAccessUmami: "Umami access",
+	checkWebsiteId: "Website ID",
+	sourceUmami: "Umami.",
+	encryptionKeyHintUmami:
+		"If saving the API key fails with an encryption error, the site needs EMDASH_ENCRYPTION_KEY: generate a value with npx emdash secrets generate and store it as a secret (on Cloudflare: wrangler secret put EMDASH_ENCRYPTION_KEY).",
+	needsCredentialsUmami: "Needs the API key.",
+	accessOkUmami: "Umami accepts the API key.",
+	needsAccessUmami: "Needs working Umami access.",
+	websiteIdMissing: "No website ID set. Copy one from the list below into Umami website ID in the plugin's settings.",
+	websiteIdMissingNoList:
+		"No website ID set, and Umami lists no website for this API key, which is what it answers for a user who can only view a website. Copy the ID from the website's settings in Umami into Umami website ID in the plugin's settings.",
+	websiteNoTraffic:
+		"Umami reported no page views for this website in the last {days} days. Check that the tracking script is on the site.",
+	needsWebsiteId: "Needs a website ID with traffic.",
+	hostsEveryUmami: "No hostname filter: counting every hostname this website reports ({hosts}).",
+	hostsNoneUmami:
+		"Umami reports this website under {reported}, but the plugin counts only {counted}. Change Hostnames to count in the plugin's settings.",
+	websitesTitle: "Websites this API key can list",
+	colWebsiteId: "Website ID",
+	colName: "Name",
+	websitesNote:
+		"Websites the API key's user owns or manages through a team, and for the configured website the hostnames it reported in the last {days} days. A website the user can only view is not listed: copy its ID from the website's settings in Umami.",
+
 	demoData: "Demo data, not real traffic",
 	synced: "Synced {age}",
 	notSynced: "Not synced yet",
@@ -154,6 +179,8 @@ const en = {
 	firstSyncPending: "The first sync has not run yet. It is scheduled now; numbers appear after it completes.",
 	syncedNoViews:
 		"Synced {age}, but Cloudflare reported no page views for this site tag. Check that the beacon is on the site.",
+	syncedNoViewsUmami:
+		"Synced {age}, but Umami reported no page views for this website. Check that the tracking script is on the site.",
 	recently: "recently",
 
 	noEarlierPeriod: "no earlier period to compare yet",
@@ -169,12 +196,17 @@ const en = {
 	notConfigured: "Analytics is not configured yet: add {parts} in the plugin's settings.",
 	partApiToken: "an API token with Account → Account Analytics → Read",
 	partAccountId: "the Cloudflare account ID",
+	partUmamiApiKey: "an Umami API key",
 	noNetwork: "Analytics cannot reach the network: the network:request capability is not granted.",
 	noSiteTagSites: "No site tag set. Sites with traffic on this account: {sites}.",
 	noSiteTagNoTraffic:
 		"No site tag set, and this account reported no Web Analytics traffic in the last 30 days. Check that the beacon is on the site.",
+	noWebsiteIdSites: "No website ID set. Websites this API key can list: {sites}.",
+	noWebsiteIdNoList:
+		"No website ID set, and Umami lists no website for this API key, which is what it answers for a user who can only view a website. Copy the ID from the website's settings in Umami into the plugin's settings.",
 	indexingFailed: "Indexing content failed: {detail}",
 	summingFailed: "Summing the 30-day views failed: {detail}",
+	historyFailed: "Reading earlier days failed: {detail}",
 	storageUnavailable: "Storage collections are not available.",
 	cfNoAccount:
 		"Cloudflare returned no account. Check the Account ID, and that the token's permission is Account → Account Analytics → Read.",
@@ -190,6 +222,18 @@ const en = {
 	cfTooManyGroups:
 		"Too many groups for one request: {paths} paths x {days} days exceeds Cloudflare's {max}-group page size. Reduce the chunk size.",
 	cfNoRetention: "Cloudflare returned no retention settings for this dataset",
+	umamiBadKey:
+		"Umami rejected the API key (401). Create a key under Settings → API keys in Umami and save it in the plugin's settings.",
+	umamiUnauthorized:
+		"Umami answered 401 Unauthorized: the API key is wrong or revoked, or its user cannot view this website.",
+	umamiNoWebsite: "Umami has no website with this ID that the API key's user can view (HTTP {status}).",
+	umamiProxy:
+		"Umami answered with a web page instead of JSON (HTTP {status}): something in front of the API is intercepting the request.",
+	umamiRateLimited: "Umami rate-limited the request (429). The next sync tries again.",
+	umamiUnreachable: "Umami could not be reached: {detail}",
+	umamiHttp: "Umami returned HTTP {status}",
+	umamiUnexpected: "Umami returned a response in a shape this plugin does not know.",
+	umamiTruncated: "Umami reported {max} or more paths for one day, which is more than the plugin reads.",
 } satisfies Record<string, Message>;
 
 export type MessageKey = keyof typeof en;
@@ -213,6 +257,7 @@ const de: Record<MessageKey, Message> = {
 	refresh: "Aktualisieren",
 	openAnalytics: "Analytics öffnen",
 	openInCloudflare: "In Cloudflare öffnen",
+	openInUmami: "In Umami öffnen",
 	rangeDays: { one: "{count} Tag", other: "{count} Tage" },
 	topEntries: "Meistbesuchte Einträge",
 	referrers: "Verweisquellen",
@@ -334,6 +379,31 @@ const de: Record<MessageKey, Message> = {
 	sitesNote:
 		"Sites mit Seitenaufrufen in den letzten {days} Tagen. Im Cloudflare-Dashboard ist das Site-Tag auch die ID am Ende des Links Manage site der Site.",
 
+	checkCredentialsUmami: "API-Schlüssel",
+	checkAccessUmami: "Zugriff auf Umami",
+	checkWebsiteId: "Website-ID",
+	sourceUmami: "Umami.",
+	encryptionKeyHintUmami:
+		"Wenn das Speichern des API-Schlüssels mit einem Verschlüsselungsfehler scheitert, fehlt der Website EMDASH_ENCRYPTION_KEY: Erzeuge einen Wert mit npx emdash secrets generate und hinterlege ihn als Secret (bei Cloudflare: wrangler secret put EMDASH_ENCRYPTION_KEY).",
+	needsCredentialsUmami: "Braucht den API-Schlüssel.",
+	accessOkUmami: "Umami akzeptiert den API-Schlüssel.",
+	needsAccessUmami: "Braucht funktionierenden Zugriff auf Umami.",
+	websiteIdMissing:
+		"Keine Website-ID eingetragen. Übernimm eine aus der Liste unten in das Feld Umami website ID in den Einstellungen des Plugins.",
+	websiteIdMissingNoList:
+		"Keine Website-ID eingetragen, und Umami listet für diesen API-Schlüssel keine Website auf: Das ist die Antwort für einen Benutzer, der eine Website nur ansehen darf. Übernimm die ID aus den Einstellungen der Website in Umami in das Feld Umami website ID in den Einstellungen des Plugins.",
+	websiteNoTraffic:
+		"Umami hat für diese Website in den letzten {days} Tagen keine Seitenaufrufe gemeldet. Prüfe, ob das Tracking-Skript auf der Website eingebunden ist.",
+	needsWebsiteId: "Braucht eine Website-ID mit Traffic.",
+	hostsEveryUmami: "Kein Hostnamen-Filter: Gezählt wird jeder Hostname, den diese Website meldet ({hosts}).",
+	hostsNoneUmami:
+		"Umami meldet diese Website unter {reported}, das Plugin zählt aber nur {counted}. Ändere Hostnames to count in den Einstellungen des Plugins.",
+	websitesTitle: "Websites, die dieser API-Schlüssel auflisten kann",
+	colWebsiteId: "Website-ID",
+	colName: "Name",
+	websitesNote:
+		"Websites, die dem Benutzer des API-Schlüssels gehören oder die er über ein Team verwaltet, und für die eingetragene Website die Hostnamen, die sie in den letzten {days} Tagen gemeldet hat. Eine Website, die der Benutzer nur ansehen darf, steht nicht in der Liste: Übernimm ihre ID aus den Einstellungen der Website in Umami.",
+
 	demoData: "Demodaten, keine echten Besuche",
 	synced: "Synchronisiert {age}",
 	notSynced: "Noch nicht synchronisiert",
@@ -347,6 +417,8 @@ const de: Record<MessageKey, Message> = {
 		"Die erste Synchronisierung ist noch nicht gelaufen. Sie ist eingeplant; die Zahlen erscheinen, sobald sie abgeschlossen ist.",
 	syncedNoViews:
 		"Synchronisiert {age}, aber Cloudflare meldet für dieses Site-Tag keine Seitenaufrufe. Prüfe, ob das Beacon auf der Webseite eingebunden ist.",
+	syncedNoViewsUmami:
+		"Synchronisiert {age}, aber Umami meldet für diese Website keine Seitenaufrufe. Prüfe, ob das Tracking-Skript auf der Webseite eingebunden ist.",
 	recently: "kürzlich",
 
 	noEarlierPeriod: "noch kein früherer Zeitraum zum Vergleich",
@@ -363,12 +435,17 @@ const de: Record<MessageKey, Message> = {
 	notConfigured: "Analytics ist noch nicht eingerichtet: Trage {parts} in den Einstellungen des Plugins ein.",
 	partApiToken: "ein API-Token mit Account → Account Analytics → Read",
 	partAccountId: "die Cloudflare-Konto-ID",
+	partUmamiApiKey: "einen Umami-API-Schlüssel",
 	noNetwork: "Analytics kann das Netzwerk nicht erreichen: Die Berechtigung network:request ist nicht erteilt.",
 	noSiteTagSites: "Kein Site-Tag gesetzt. Webseiten mit Besuchen in diesem Konto: {sites}.",
 	noSiteTagNoTraffic:
 		"Kein Site-Tag gesetzt, und dieses Konto hat in den letzten 30 Tagen keine Web-Analytics-Besuche gemeldet. Prüfe, ob das Beacon auf der Webseite eingebunden ist.",
+	noWebsiteIdSites: "Keine Website-ID gesetzt. Websites, die dieser API-Schlüssel auflisten kann: {sites}.",
+	noWebsiteIdNoList:
+		"Keine Website-ID gesetzt, und Umami listet für diesen API-Schlüssel keine Website auf: Das ist die Antwort für einen Benutzer, der eine Website nur ansehen darf. Übernimm die ID aus den Einstellungen der Website in Umami in die Einstellungen des Plugins.",
 	indexingFailed: "Das Indizieren der Inhalte ist fehlgeschlagen: {detail}",
 	summingFailed: "Das Summieren der Aufrufe über 30 Tage ist fehlgeschlagen: {detail}",
+	historyFailed: "Das Lesen früherer Tage ist fehlgeschlagen: {detail}",
 	storageUnavailable: "Die Speicher-Collections sind nicht verfügbar.",
 	cfNoAccount:
 		"Cloudflare hat kein Konto zurückgegeben. Prüfe die Konto-ID und dass das Token die Berechtigung Account → Account Analytics → Read hat.",
@@ -384,6 +461,19 @@ const de: Record<MessageKey, Message> = {
 	cfTooManyGroups:
 		"Zu viele Gruppen für eine Anfrage: {paths} Pfade x {days} Tage übersteigen Cloudflares Seitengröße von {max} Gruppen. Verringere die Anzahl der Pfade pro Durchlauf.",
 	cfNoRetention: "Cloudflare hat für diesen Datensatz keine Aufbewahrungseinstellungen zurückgegeben",
+	umamiBadKey:
+		"Umami hat den API-Schlüssel abgelehnt (401). Erzeuge in Umami unter Settings → API keys einen Schlüssel und speichere ihn in den Einstellungen des Plugins.",
+	umamiUnauthorized:
+		"Umami hat mit 401 Unauthorized geantwortet: Der API-Schlüssel ist falsch oder widerrufen, oder sein Benutzer darf diese Website nicht ansehen.",
+	umamiNoWebsite:
+		"Umami kennt keine Website mit dieser ID, die der Benutzer des API-Schlüssels ansehen darf (HTTP {status}).",
+	umamiProxy:
+		"Umami hat mit einer Webseite statt mit JSON geantwortet (HTTP {status}): Etwas vor der API fängt die Anfrage ab.",
+	umamiRateLimited: "Umami hat die Anfrage gedrosselt (429). Die nächste Synchronisierung versucht es erneut.",
+	umamiUnreachable: "Umami war nicht erreichbar: {detail}",
+	umamiHttp: "Umami hat HTTP {status} zurückgegeben",
+	umamiUnexpected: "Umami hat eine Antwort in einer Form geliefert, die dieses Plugin nicht kennt.",
+	umamiTruncated: "Umami hat für einen Tag {max} oder mehr Pfade gemeldet, mehr als das Plugin liest.",
 };
 
 const catalogues = { en, de } as const;
@@ -415,11 +505,18 @@ export function t(lang: Lang, key: MessageKey, params: Params = {}): string {
 	);
 }
 
+/** How a missing settings key reads inside the "not configured" sentence. */
+const MISSING_PARTS: Record<string, MessageKey> = {
+	cfApiToken: "partApiToken",
+	cfAccountId: "partAccountId",
+	umamiApiKey: "partUmamiApiKey",
+};
+
 /** A problem in the reader's language. */
 export function problemText(lang: Lang, problem: Problem): string {
 	if (problem.key === "notConfigured") {
 		const missing = String(problem.params?.missing ?? "").split(",").filter(Boolean);
-		const parts = missing.map((key) => (key === "cfApiToken" ? t(lang, "partApiToken") : t(lang, "partAccountId")));
+		const parts = missing.map((key) => t(lang, MISSING_PARTS[key] ?? "partAccountId"));
 		return t(lang, "notConfigured", { parts: listOf(lang, parts) });
 	}
 	return t(lang, problem.key, problem.params);

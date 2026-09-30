@@ -13,6 +13,7 @@ import {
 	newHost,
 	NOW,
 	pathsOf,
+	respondUmamiOverview,
 	routableCollection,
 	seedDaily,
 	seedEntries,
@@ -21,6 +22,10 @@ import {
 	synced,
 	tick,
 	TODAY,
+	umamiJson,
+	umamiRows,
+	umamiStats,
+	umamiUrl,
 } from "./host.js";
 
 /**
@@ -251,6 +256,210 @@ describe("admin requests", () => {
 		expect(calls.length, calls.join(", ")).toBeLessThanOrEqual(LIMIT);
 		expect(toast).toMatchObject({ type: "error" });
 		expect(calls.filter((c) => c === "storageQuery").length).toBeGreaterThanOrEqual(5);
+	});
+});
+
+describe("Umami, which answers one day per request", () => {
+	const YESTERDAY = addDays(TODAY, -1);
+	const refused = () => umamiJson({ error: { code: "unauthorized" } }, 401);
+
+	/** A caught-up Umami site with the paths slot next and nothing else due. */
+	const caughtUp: SyncState = {
+		...synced,
+		provider: "umami",
+		phase: "paths",
+		lastWork: "paths",
+		history: { since: addDays(TODAY, -90), until: YESTERDAY },
+	};
+
+	it("an overview tick, with both days' totals new", async () => {
+		host = await newHost("umami");
+		await respondUmamiOverview(host);
+
+		const calls = await bridgeCalls(tick(host));
+
+		expect(calls.length, calls.join(", ")).toBeLessThanOrEqual(LIMIT);
+		expect(host.http.requests()).toHaveLength(5);
+		await expect(host.inspect.storage.get("rollup", TODAY)).resolves.not.toBeNull();
+		await expect(host.inspect.storage.get("rollup", YESTERDAY)).resolves.not.toBeNull();
+	});
+
+	it("a Refresh tick", async () => {
+		host = await newHost("umami");
+		await setState(host, caughtUp);
+		await respondUmamiOverview(host);
+
+		const calls = await bridgeCalls(tick(host, "refresh"));
+
+		expect(calls.length, calls.join(", ")).toBeLessThanOrEqual(LIMIT);
+		await expect(host.inspect.storage.get("rollup", TODAY)).resolves.not.toBeNull();
+	});
+
+	it("a paths tick", async () => {
+		host = await newHost("umami");
+		// More entries than one tick may ask about. Each has traffic today,
+		// not stored yet, and a stored row on every earlier day of the
+		// window, so all three reads are full and both writes happen.
+		const paths = pathsOf(40);
+		const asked = paths.slice(0, PATHS_PER_TICK);
+		await seedEntries(host, paths);
+		await seedDaily(host, asked, daysBack(8).slice(1));
+		await setState(host, caughtUp);
+		await host.http.respond(umamiUrl.dayPaths(TODAY), umamiRows(paths.map((path) => [path, 7, 3])));
+
+		const calls = await bridgeCalls(tick(host));
+
+		expect(calls.length, calls.join(", ")).toBeLessThanOrEqual(LIMIT);
+		expect(calls.filter((c) => c === "storageGetMany")).toHaveLength(3);
+		await expect(host.inspect.storage.get("daily", `${TODAY}|${asked[35]}`)).resolves.not.toBeNull();
+		await expect(host.inspect.storage.get("daily", `${TODAY}|${paths[36]}`)).resolves.toBeNull();
+		// Seven today, three on each of the seven stored days: six of them
+		// are in views7, all seven in the recent part of views30.
+		await expect(host.inspect.storage.get("entries", asked[35]!)).resolves.toMatchObject({ views7: 25, views30: 28 });
+	});
+
+	it("every step of a history pass over a day with more paths than one step can compare", async () => {
+		host = await newHost("umami");
+		await setState(host, { ...caughtUp, history: undefined });
+		const rows = pathsOf(540, "/h-").map((path): [string, number, number] => [path, 2, 1]);
+
+		let steps = 0;
+		for (let i = 0; i < 6; i++) {
+			const before = await host.inspect.kv.get<SyncState>("state");
+			if (before?.history?.until === YESTERDAY) break;
+			await setState(host, { ...before!, phase: "paths", lastWork: "paths" });
+			await host.http.respond(umamiUrl.dayPaths(YESTERDAY), umamiRows(rows));
+			await host.http.respond(umamiUrl.stats(YESTERDAY), umamiStats(1080, 540));
+			const calls = await bridgeCalls(tick(host));
+			host.http.clear();
+			expect(calls.length, `step ${i}: ${calls.join(", ")}`).toBeLessThanOrEqual(LIMIT);
+			steps++;
+		}
+
+		// Two steps of 196 paths, and a last one that has two reads left to
+		// make as well, then reads the day's totals and writes the site's row.
+		expect(steps).toBe(3);
+		await expect(host.inspect.storage.get("daily", `${YESTERDAY}|/h-539/`)).resolves.not.toBeNull();
+		await expect(host.inspect.storage.get("rollup", YESTERDAY)).resolves.toMatchObject({ pageviews: 1080 });
+	});
+
+	it("a history step that writes a whole day after crossing an empty one", async () => {
+		// The empty day's request comes out of the same budget, which leaves
+		// the day after it one read of 98 paths instead of two.
+		host = await newHost("umami");
+		const empty = addDays(TODAY, -2);
+		const busy = addDays(TODAY, -3);
+		await setState(host, { ...caughtUp, history: { since: YESTERDAY, until: YESTERDAY } });
+		await host.http.respond(umamiUrl.dayPaths(empty), umamiRows([]));
+		await host.http.respond(umamiUrl.dayPaths(busy), umamiRows(pathsOf(98, "/e-").map((path) => [path, 2, 1])));
+		await host.http.respond(umamiUrl.stats(busy), umamiStats(196, 98));
+
+		const calls = await bridgeCalls(tick(host));
+
+		expect(calls.length, calls.join(", ")).toBeLessThanOrEqual(LIMIT);
+		expect((await host.inspect.kv.get<SyncState>("state"))?.history).toEqual({ since: busy, until: YESTERDAY });
+		await expect(host.inspect.storage.get("daily", `${busy}|/e-97/`)).resolves.not.toBeNull();
+		await expect(host.inspect.storage.get("rollup", busy)).resolves.toMatchObject({ visits: 98 });
+	});
+
+	it("a history step across as many empty days as it may ask about", async () => {
+		host = await newHost("umami");
+		await setState(host, { ...caughtUp, history: { since: YESTERDAY, until: YESTERDAY } });
+		for (const day of daysBack(10).slice(2)) await host.http.respond(umamiUrl.dayPaths(day), umamiRows([]));
+
+		const calls = await bridgeCalls(tick(host));
+
+		expect(calls.length, calls.join(", ")).toBeLessThanOrEqual(LIMIT);
+		expect(host.http.requests()).toHaveLength(7);
+		expect((await host.inspect.kv.get<SyncState>("state"))?.history).toEqual({
+			since: addDays(TODAY, -8),
+			until: YESTERDAY,
+		});
+	});
+
+	it("a tick without a website ID, which lists the websites instead", async () => {
+		host = await newHost("umami");
+		await host.fixtures.plugin.setting("umamiWebsiteId", "");
+		await host.http.respond(umamiUrl.websites(), umamiJson({ data: [{ id: "site-a", domain: "example.test" }] }));
+
+		const calls = await bridgeCalls(tick(host));
+
+		expect(calls.length, calls.join(", ")).toBeLessThanOrEqual(LIMIT);
+		expect((await host.inspect.kv.get<SyncState>("state"))?.lastProblem?.key).toBe("noWebsiteIdSites");
+	});
+
+	it("a setup check whose website is refused, which asks a second time", async () => {
+		host = await newHost("umami");
+		await host.http.respond(umamiUrl.hostnames(addDays(TODAY, -6), TODAY), refused());
+		await host.http.respond(umamiUrl.websites(), umamiJson({ data: [] }));
+
+		const calls = await bridgeCalls(() => host!.admin.act("/analytics", SETUP_ACTION, { value: 30 }));
+
+		expect(calls.length, calls.join(", ")).toBeLessThanOrEqual(LIMIT);
+		expect(host.http.requests()).toHaveLength(2);
+	});
+
+	/** A full comparison window and 90 days of per-entry rows, as the page's fallback reads them. */
+	async function withStore(runtime: PluginRuntimeTestHost) {
+		const paths = pathsOf(5);
+		await seedEntries(runtime, paths);
+		await seedRollup(runtime, 180);
+		await seedDaily(runtime, paths, daysBack(60));
+		await setState(runtime, caughtUp);
+		return paths;
+	}
+
+	it("an analytics page load over 90 days, answered live by five requests", async () => {
+		host = await newHost("umami");
+		const paths = await withStore(host);
+		await respondUmamiOverview(host, { since: addDays(TODAY, -89), paths: paths.map((path) => [path, 9, 4]) });
+
+		const calls = await bridgeCalls(() => host!.admin.act("/analytics", RANGE_ACTION, { value: 90 }));
+
+		expect(calls.length, calls.join(", ")).toBeLessThanOrEqual(LIMIT);
+		expect(host.http.requests()).toHaveLength(5);
+		expect(calls).toContain("storageGetMany");
+	});
+
+	it("an analytics page Refresh over 90 days whose first request fails, falling back to the store", async () => {
+		host = await newHost("umami");
+		await withStore(host);
+		await host.http.respond(umamiUrl.stats(TODAY), refused());
+
+		let toast: unknown;
+		const calls = await bridgeCalls(async () => {
+			toast = (await host!.admin.act("/analytics", PAGE_REFRESH_ACTION, { value: 90 })).toast;
+		});
+
+		expect(calls.length, calls.join(", ")).toBeLessThanOrEqual(LIMIT);
+		expect(toast).toMatchObject({ type: "error" });
+		expect(host.http.requests()).toHaveLength(1);
+		// The full fallback: two rollup pages and three daily pages.
+		expect(calls.filter((c) => c === "storageQuery").length).toBeGreaterThanOrEqual(5);
+	});
+
+	it("an analytics page Refresh over 90 days whose last request fails, after all five were sent", async () => {
+		// The worst case for the fallback: the five requests are spent, so it
+		// reads the site totals and leaves the per-entry pages out.
+		host = await newHost("umami");
+		await withStore(host);
+		const since = addDays(TODAY, -89);
+		await host.http.respond(umamiUrl.stats(TODAY), umamiStats(10, 5));
+		await host.http.respond(umamiUrl.stats(YESTERDAY), umamiStats(20, 8));
+		await host.http.respond(umamiUrl.metrics("path", since, TODAY, 100), umamiRows([]));
+		await host.http.respond(umamiUrl.metrics("referrer", since, TODAY, 20), umamiRows([]));
+		await host.http.respond(umamiUrl.metrics("country", since, TODAY, 50), umamiJson("Too many requests", 429));
+
+		let response: { toast?: unknown; blocks: unknown[] } | undefined;
+		const calls = await bridgeCalls(async () => {
+			response = await host!.admin.act("/analytics", PAGE_REFRESH_ACTION, { value: 90 });
+		});
+
+		expect(calls.length, calls.join(", ")).toBeLessThanOrEqual(LIMIT);
+		expect(host.http.requests()).toHaveLength(5);
+		expect(response?.toast).toMatchObject({ type: "error" });
+		// The stored totals still render.
+		expect(JSON.stringify(response?.blocks)).toMatch(/Visits, last 90 days/);
 	});
 });
 

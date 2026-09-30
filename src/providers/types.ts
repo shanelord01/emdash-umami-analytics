@@ -15,13 +15,23 @@
 import type { Problem } from "../i18n.js";
 import type { Day } from "../sync/window.js";
 
-export type ProviderId = "cloudflare" | "demo";
+export type ProviderId = "cloudflare" | "demo" | "umami";
 
 export type Metric = "pageviews" | "visits" | "uniques";
 export type Breakdown = "referrers" | "countries" | "devices";
 
 export interface ProviderCapabilities {
-	/** How the provider answers "numbers for these specific paths". */
+	/**
+	 * How the provider answers "numbers for these specific paths".
+	 *
+	 * `filter`: one request takes a list of paths and a range of days and
+	 * returns a row per day and path. `wide-pull`: one request returns every
+	 * path for one day, so a range costs a request per day and the scheduler
+	 * asks for today only, reads the rest of the window from the store and
+	 * pulls closed days one at a time through `day()` and `dayTotals()`. Its
+	 * `overview()` carries daily totals for the last day of the range and the
+	 * day before, whatever the range, for the same reason.
+	 */
 	batchPaths: "filter" | "wide-pull" | "none";
 	/**
 	 * Most paths worth putting in one batched request.
@@ -100,7 +110,10 @@ export interface Overview {
 }
 
 export interface Site {
+	/** The site's id at the provider: a Cloudflare site tag, an Umami website ID. */
 	siteTag: string;
+	/** What the provider calls the site, when it has a name for it. */
+	name?: string;
 	/** Absent when discovered through analytics rather than site management. */
 	siteToken?: string;
 	hosts: string[];
@@ -150,6 +163,25 @@ export interface Provider {
 
 	/** The provider's own dashboard for this site, when it has one to link to. */
 	dashboardUrl?(): string | null;
+
+	/**
+	 * Every path's numbers for one day, in one request. A `wide-pull`
+	 * provider has it.
+	 */
+	day?(day: Day): Promise<Result<PathDayRow[]>>;
+
+	/**
+	 * Site totals for one day, in one request, or null for a day without
+	 * page views. A `wide-pull` provider has it.
+	 */
+	dayTotals?(day: Day): Promise<Result<DailyRow | null>>;
+
+	/**
+	 * Requests this instance has sent. Present when one method may send
+	 * several, so a caller counting bridge calls knows what a failed call
+	 * already spent.
+	 */
+	requests?(): number;
 }
 
 /** The injected transport. `ctx.http.fetch` satisfies it. */

@@ -101,7 +101,8 @@ export function formatDay(day: string, locale?: string): string {
  *
  * Silence here is what makes an editor compare the widget with the
  * provider's dashboard and trust neither. Named only for Cloudflare, whose
- * sampling is the reason; demo data merely imitates it.
+ * sampling is the reason; demo data merely imitates it. A store written
+ * before the provider was recorded holds Cloudflare's numbers.
  */
 export function qualifier(
 	opts: { estimated?: boolean; provisional?: boolean; provider?: string },
@@ -109,7 +110,8 @@ export function qualifier(
 ): string {
 	const lang = langOf(locale);
 	const notes: string[] = [];
-	if (opts.estimated) notes.push(t(lang, opts.provider === "demo" ? "estimatedSampled" : "estimatedCloudflare"));
+	const cloudflare = opts.provider === undefined || opts.provider === "cloudflare";
+	if (opts.estimated) notes.push(t(lang, cloudflare ? "estimatedCloudflare" : "estimatedSampled"));
 	if (opts.provisional) notes.push(t(lang, "todayCounting"));
 	return notes.join(" · ");
 }

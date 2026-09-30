@@ -25,7 +25,7 @@
 import type { PluginContext } from "emdash/plugin";
 
 import { entriesStore, dailyStore, rollupStore, BIND_LIMIT } from "../store/access.js";
-import type { LabelledRow, Overview, Provider } from "../providers/types.js";
+import type { LabelledRow, Overview, Provider, ProviderId } from "../providers/types.js";
 import { historyReaches, sumWindow, type EntryRow, type RollupRow } from "../store/rows.js";
 import type { SyncState } from "../sync/scheduler.js";
 import { addDays, daysBetween, utcDay, type Day } from "../sync/window.js";
@@ -42,7 +42,7 @@ import {
 	timeseries,
 	type AnalyticsBlock,
 } from "./blocks.js";
-import { langOf, t, type Lang } from "../i18n.js";
+import { langOf, t, type Lang, type MessageKey } from "../i18n.js";
 import { comparisonText, formatCount, formatDay, trendOf } from "./format.js";
 import { emptyReason, statusLine } from "./status.js";
 
@@ -95,6 +95,8 @@ export interface PageInput {
 	entriesByPath: Map<string, EntryRow>;
 	/** The provider's own dashboard, or null when it has none (demo data). */
 	dashboardUrl: string | null;
+	/** The provider the page asked live, which names the dashboard link. */
+	source?: ProviderId;
 	/**
 	 * Referrers and countries from the live answer, and the first day it
 	 * covers, which is later than the range start for long ranges.
@@ -108,6 +110,10 @@ export interface PageInput {
  * Gather the page. Calls: the live read (one fetch), up to two rollup
  * pages, one entries lookup; without a live answer, up to three daily
  * pages as well.
+ *
+ * A provider whose overview is several requests counts them (`requests`).
+ * When such a read fails after the first request, each further one it
+ * sent takes a daily page away, so the fallback still fits the budget.
  */
 export async function loadPage(
 	ctx: PluginContext,
@@ -165,6 +171,7 @@ export async function loadPage(
 			topEntries,
 			entriesByPath: await lookup(topEntries),
 			dashboardUrl,
+			...(provider && { source: provider.id }),
 			breakdowns: { referrers: live.value.referrers, countries: live.value.countries, since: liveSince },
 			now,
 			locale,
@@ -173,9 +180,10 @@ export async function loadPage(
 
 	const dailyRows: Array<{ date: Day; path: string; pageviews: number; visits: number }> = [];
 	const daily = dailyStore(ctx);
+	const dailyPages = Math.max(0, DAILY_PAGES - Math.max(0, (provider?.requests?.() ?? 1) - 1));
 	let dailyCursor: string | undefined;
 	let hasMore = false;
-	for (let i = 0; daily && i < DAILY_PAGES; i++) {
+	for (let i = 0; daily && i < dailyPages; i++) {
 		const page = await daily.query({
 			where: { date: { gte: addDays(today, -(range - 1)) } },
 			orderBy: { date: "desc" },
@@ -196,6 +204,7 @@ export async function loadPage(
 		topEntries,
 		entriesByPath: await lookup(topEntries),
 		dashboardUrl,
+		...(provider && { source: provider.id }),
 		now,
 		locale,
 	};
@@ -391,12 +400,21 @@ function controls(input: PageInput, lang: Lang) {
 		refreshButton(input.range, lang),
 		link(t(lang, "perEntry"), { kind: "plugin-page", path: CONTENT_PAGE_PATH }, { appearance: "secondary" }),
 		...(input.dashboardUrl
-			? [link(t(lang, "openInCloudflare"), { kind: "external", url: input.dashboardUrl }, { appearance: "secondary" })]
+			? [
+					link(
+						t(lang, (input.source && DASHBOARD_LINKS[input.source]) ?? "openInCloudflare"),
+						{ kind: "external", url: input.dashboardUrl },
+						{ appearance: "secondary" },
+					),
+				]
 			: []),
 		setupButton(input.range, lang),
 	];
 	return actions(elements, { blockId: "analytics:controls" });
 }
+
+/** What the dashboard link is called, for the providers whose name it carries. */
+const DASHBOARD_LINKS: Partial<Record<ProviderId, MessageKey>> = { umami: "openInUmami" };
 
 function refreshButton(range: RangeDays, lang: Lang) {
 	return button(PAGE_REFRESH_ACTION, t(lang, "refresh"), { style: "secondary", value: range });

@@ -220,6 +220,58 @@ describe("before anything is known", () => {
 	});
 });
 
+describe("with Umami as the data source", () => {
+	function umami(): SetupFacts {
+		return { ...healthy(), provider: "umami", siteTag: "site-1", discovery: { ok: true, value: [{ siteTag: "site-1", hosts: ["example.test"], pageviews: 120 }] } };
+	}
+
+	it("runs the same checks under Umami's names, in both languages", () => {
+		const labels = (locale: string) => {
+			const table = renderSetup(umami(), 30, locale).find((b) => b.block_id === "analytics:setup:checks") as unknown as {
+				rows: Array<{ check: string }>;
+			};
+			return table.rows.slice(0, 5).map((row) => row.check);
+		};
+		expect(problems(umami())).toEqual([]);
+		expect(labels("en")).toEqual(["Data source", "API key", "Umami access", "Website ID", "Hostnames"]);
+		expect(labels("de")).toEqual(["Datenquelle", "API-Schlüssel", "Zugriff auf Umami", "Website-ID", "Hostnamen"]);
+		expect(JSON.stringify(renderSetup(umami(), 30, "en"))).not.toMatch(/Cloudflare|site tag/i);
+	});
+
+	it("a missing key asks for the key and explains the encryption key", () => {
+		const facts = { ...umami(), missing: ["umamiApiKey"], discovery: null };
+		expect(check(facts, "credentials").detail).toMatch(/add an Umami API key in the plugin's settings/);
+		expect(check(facts, "credentials").detail).toMatch(/If saving the API key fails/);
+		expect(check(facts, "credentials", "de").detail).toMatch(/einen Umami-API-Schlüssel/);
+		expect(check(facts, "access")).toMatchObject({ status: "skipped", detail: "Needs the API key." });
+	});
+
+	it("a website without traffic says to check the tracking script, not the beacon token", () => {
+		const facts = { ...umami(), discovery: { ok: true as const, value: [] } };
+		expect(check(facts, "siteTag")).toMatchObject({
+			status: "problem",
+			detail: "Umami reported no page views for this website in the last 7 days. Check that the tracking script is on the site.",
+		});
+		expect(check(facts, "hosts")).toMatchObject({ status: "skipped", detail: "Needs a website ID with traffic." });
+	});
+
+	it("no website ID and nothing to list says where the ID is", () => {
+		const facts = { ...umami(), siteTag: "", discovery: { ok: true as const, value: [] } };
+		expect(check(facts, "siteTag").detail).toMatch(/Copy the ID from the website's settings in Umami/);
+	});
+
+	it("each refusal reads as one sentence, in the reader's language", () => {
+		const access = (key: Parameters<typeof failure>[0], locale = "en") =>
+			check({ ...umami(), discovery: failure(key, { status: 200, detail: "timed out" }) }, "access", locale).detail;
+		expect(access("umamiBadKey")).toMatch(/rejected the API key \(401\)/);
+		expect(access("umamiProxy")).toMatch(/answered with a web page instead of JSON \(HTTP 200\)/);
+		expect(access("umamiRateLimited")).toMatch(/rate-limited the request \(429\)/);
+		expect(access("umamiUnreachable")).toBe("Umami could not be reached: timed out");
+		expect(access("umamiProxy", "de")).toMatch(/mit einer Webseite statt mit JSON geantwortet/);
+		expect(access("umamiNoWebsite", "de")).toMatch(/keine Website mit dieser ID/);
+	});
+});
+
 describe("intervalMinutes", () => {
 	it("reads the four schedules the settings offer", () => {
 		expect(["*/15 * * * *", "*/30 * * * *", "0 * * * *", "0 */6 * * *"].map(intervalMinutes)).toEqual([15, 30, 60, 360]);

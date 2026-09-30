@@ -15,8 +15,8 @@ import { addDays, utcDay } from "../src/sync/window.js";
 export const NOW = new Date();
 export const TODAY = utcDay(NOW);
 
-export async function newHost(provider: "demo" | "cloudflare" = "demo") {
-	if (provider === "cloudflare") {
+export async function newHost(provider: "demo" | "cloudflare" | "umami" = "demo") {
+	if (provider !== "demo") {
 		vi.stubEnv("EMDASH_ENCRYPTION_KEY", "emdash_enc_v1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
 	}
 	const runtime = await createPluginRuntimeTestHost({
@@ -29,10 +29,71 @@ export async function newHost(provider: "demo" | "cloudflare" = "demo") {
 			cfSiteTag: "tag-1",
 		});
 		expect(saved).toMatchObject({ success: true });
+	} else if (provider === "umami") {
+		const saved = await runtime.actions.plugin.updateSettings({
+			provider: "umami",
+			umamiApiKey: "umami_test",
+			umamiWebsiteId: UMAMI_WEBSITE,
+		});
+		expect(saved).toMatchObject({ success: true });
 	} else {
 		await runtime.fixtures.plugin.setting("provider", "demo");
 	}
 	return runtime;
+}
+
+/** The website the Umami fixtures are configured with. */
+export const UMAMI_WEBSITE = "11111111-2222-4333-8444-555555555555";
+
+const UMAMI_FILTERS = `path=${encodeURIComponent("nre.^/_emdash(/|$)")}&hostname=${encodeURIComponent("eq.example.test,www.example.test")}`;
+
+function umamiRange(since: string, until: string): string {
+	const start = Date.parse(`${since}T00:00:00.000Z`);
+	const end = Date.parse(`${until}T23:59:59.999Z`);
+	return `startAt=${start}&endAt=${end}`;
+}
+
+/**
+ * The exact URLs the Umami adapter requests for the fixture site, written
+ * out here rather than taken from the adapter: the test host answers a URL
+ * only when it matches to the character, so a request that changes shape
+ * finds no response and fails the tick.
+ */
+export const umamiUrl = {
+	stats: (day: string) =>
+		`https://api.umami.is/v1/websites/${UMAMI_WEBSITE}/stats?${umamiRange(day, day)}&${UMAMI_FILTERS}`,
+	metrics: (type: "path" | "referrer" | "country", since: string, until: string, limit: number) =>
+		`https://api.umami.is/v1/websites/${UMAMI_WEBSITE}/metrics/expanded?${umamiRange(since, until)}&${UMAMI_FILTERS}&type=${type}&limit=${limit}`,
+	dayPaths: (day: string) =>
+		`https://api.umami.is/v1/websites/${UMAMI_WEBSITE}/metrics/expanded?${umamiRange(day, day)}&${UMAMI_FILTERS}&type=path&limit=10000`,
+	hostnames: (since: string, until: string) =>
+		`https://api.umami.is/v1/websites/${UMAMI_WEBSITE}/metrics/expanded?${umamiRange(since, until)}&path=${encodeURIComponent("nre.^/_emdash(/|$)")}&type=hostname&limit=50`,
+	websites: () => "https://api.umami.is/v1/websites?includeTeams=1&pageSize=100",
+};
+
+export function umamiJson(body: unknown, status = 200): Response {
+	return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+}
+
+export function umamiStats(pageviews: number, visits: number, visitors = visits) {
+	return umamiJson({ pageviews, visitors, visits, bounces: 0, totaltime: 0 });
+}
+
+export function umamiRows(rows: Array<[name: string, pageviews: number, visits: number]>) {
+	return umamiJson(rows.map(([name, pageviews, visits]) => ({ name, pageviews, visitors: visits, visits, bounces: 0, totaltime: 0 })));
+}
+
+/** Answer one overview: totals for today and yesterday, and the three breakdowns over the widget's week. */
+export async function respondUmamiOverview(
+	runtime: PluginRuntimeTestHost,
+	opts: { since?: string; today?: [number, number]; yesterday?: [number, number]; paths?: Array<[string, number, number]> } = {},
+) {
+	const since = opts.since ?? addDays(TODAY, -6);
+	await runtime.http.respond(umamiUrl.stats(TODAY), umamiStats(...(opts.today ?? [10, 5])));
+	await runtime.http.respond(umamiUrl.stats(addDays(TODAY, -1)), umamiStats(...(opts.yesterday ?? [20, 8])));
+	await runtime.http.respond(umamiUrl.metrics("path", since, TODAY, 100), umamiRows(opts.paths ?? [["/", 30, 13]]));
+	await runtime.http.respond(umamiUrl.metrics("referrer", since, TODAY, 20), umamiRows([["google.com", 9, 6]]));
+	await runtime.http.respond(umamiUrl.metrics("country", since, TODAY, 50), umamiRows([["DE", 25, 11]]));
 }
 
 export async function setState(runtime: PluginRuntimeTestHost, state: SyncState) {

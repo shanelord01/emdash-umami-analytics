@@ -1,12 +1,12 @@
 # @eisbachcode/emdash-plugin-analytics
 
-Cloudflare Web Analytics on the EmDash dashboard, and next to your content.
+Cloudflare Web Analytics or Umami on the EmDash dashboard, and next to your content.
 
 Most analytics plugins either inject a script or show site-wide numbers.
 This one keeps a `path → entry` index, so views can be attributed to the
 entry that earned them rather than to a URL string.
 
-> **Status: early releases.** Cloudflare Web Analytics plus demo data: a
+> **Status: early releases.** Cloudflare Web Analytics, Umami and demo data: a
 > dashboard widget, an Analytics page with a setup check, a per-entry page,
 > an Analytics panel in the entry editor and four read-only MCP tools.
 > Needs EmDash 1.0.1 or later. See "Not in this version".
@@ -35,7 +35,8 @@ for the days the provider still counts exactly (for Cloudflare, the last
 install a 30- or 90-day range therefore starts at the first exact day and
 says so, instead of showing Cloudflare's sampled figures, which on a
 small site can be off by a factor of ten. If the live request fails, the
-page shows the store alone.
+page shows the store alone. Umami counts every day exactly, so with Umami
+top entries, referrers and countries cover the whole range.
 
 - Range: last 7, 30 or 90 days. Visits and page views with the change
   against the previous period of the same length, shown only once stored
@@ -47,7 +48,8 @@ page shows the store alone.
 - Referrers and countries, read live for the days the provider counts
   exactly (the last week on Cloudflare), so on a 30- or 90-day range they
   cover the last week and say so.
-- "Open in Cloudflare" goes to this site's view in the Cloudflare dashboard.
+- "Open in Cloudflare" goes to this site's view in the Cloudflare dashboard,
+  "Open in Umami" to the website in Umami.
 
 ## Check setup
 
@@ -66,6 +68,12 @@ views, so the right one can be copied into the settings.
 
 The check only reads; values are entered in the plugin's settings form. It
 makes one request to Cloudflare.
+
+With Umami the same checks run under Umami's names: API key, Umami access,
+website ID, hostnames. It makes one request to Umami, and a second when
+Umami answers 401, because Umami gives that answer both for a key it does
+not know and for a website the key's user may not view. The second request
+tells the two apart.
 
 <img src="https://raw.githubusercontent.com/eisbachcode/emdash-plugin-analytics/main/images/setup-check.png" width="820" alt="The setup check with every row OK: data source, site URL, content index with 8 entries matched, scheduled sync and last sync">
 
@@ -120,7 +128,7 @@ declares four read-only tools:
 | `analytics__entry_views` | One entry's 7- and 30-day views, found by id or by path, with its translations and their total |
 | `analytics__site_totals` | Site visits and page views over 7, 30 or 90 days, against the period before |
 
-They read what the sync stored and never call Cloudflare. Every answer
+They read what the sync stored and never call the provider. Every answer
 names its window in UTC days, where stored history starts, whether the
 content index is complete and when the last sync ran, so an agent can say
 that the data is thin instead of presenting it as exact.
@@ -168,6 +176,44 @@ your sites through the analytics data instead.
 Prefer an **account-owned** token over a user-owned one. A user token dies
 with that user's membership; an account-owned token does not.
 
+## Umami instead of Cloudflare
+
+Set **Data source** to Umami. It needs, in place of the Cloudflare rows
+above:
+
+| | |
+|---|---|
+| A website in Umami | on Umami Cloud, with the tracking script on the site |
+| An API key | created in Umami under **Settings → API keys** |
+| The website ID | from the website's settings in Umami, or leave it empty and pick it from the list the widget shows |
+
+### The key, precisely
+
+An Umami API key can do whatever its user can: a key has no scope of its
+own. So create the key under a user made for this: a **view-only** user
+who can see this one website and nothing else, which in Umami means a
+view-only member of a team that holds only that website. A key made under
+your own admin user could read, change and delete every website that
+user can reach.
+
+Such a user owns no website, so the list the widget and the setup check
+offer stays empty for it. Copy the website ID from the website's settings
+in Umami instead.
+
+### What the plugin requests
+
+Three `GET` endpoints of `api.umami.is`, each with
+`Authorization: Bearer <API key>` and no other header of its own:
+
+| Endpoint | Used for |
+|---|---|
+| `/websites/{id}/stats` | one day's page views, visits and visitors |
+| `/websites/{id}/metrics/expanded` | pages, referrers, countries and hostnames |
+| `/websites` | the website list, only while no website ID is set or Umami answers 401 during a setup check |
+
+A sync makes at most seven requests, every 15 minutes by default, and the
+Analytics page five when it is opened.
+
 ## Install
 
 ```sh
@@ -198,10 +244,12 @@ Fill these in under Plugins → Analytics → Settings.
 
 | Setting | Notes |
 |---|---|
-| Data source | Cloudflare Web Analytics, or **demo data**: generated numbers that need no account (see below) |
+| Data source | Cloudflare Web Analytics, Umami, or **demo data**: generated numbers that need no account (see below) |
 | Cloudflare API token | Stored encrypted (AES-GCM). Needs `EMDASH_ENCRYPTION_KEY`; without it saving fails rather than storing plaintext |
 | Cloudflare account ID | Manage Account → Account Home |
 | Web Analytics site tag | **The site tag, not the beacon token.** They are different values. In the Cloudflare dashboard it is the ID at the end of the site's **Manage site** link (`…/web-analytics/edit/<site tag>`); the analytics view does not show it. Leave empty and the widget lists the sites on the account that had traffic in the last 30 days, with their hostnames, so you can copy the right one |
+| Umami API key | Umami only. Stored encrypted like the Cloudflare token. See "The key, precisely" |
+| Umami website ID | Umami only. Leave empty and the widget lists the websites the key's user owns or manages through a team |
 | Hostnames to count | Comma-separated. Empty uses the site URL and its `www` form. One site tag often also covers `*.pages.dev` preview deploys, which should not be counted as production traffic |
 | Sync every | 15 minutes by default |
 | Keep daily rows for | 90 days by default |
@@ -278,6 +326,22 @@ yours and this is not legal advice.
 CSP, if your site sets one: `script-src static.cloudflareinsights.com`,
 `connect-src cloudflareinsights.com`.
 
+For Umami, name the provider and pass the website ID. This one is the same
+value the plugin's settings take:
+
+```js
+analyticsBeacon({
+  provider: "umami",
+  websiteId: process.env.UMAMI_WEBSITE_ID,
+  domains: ["example.com", "www.example.com"], // optional
+});
+```
+
+`domains` becomes Umami's `data-domains`: the tracker reports only from
+those hostnames, which keeps preview deploys out at the source. Everything
+else, the consent gate included, works as above. CSP: the script's host in
+`script-src` and in `connect-src`.
+
 ## What the numbers mean
 
 **Cloudflare keeps unsampled beacon data for seven days.** Beyond that it
@@ -305,6 +369,32 @@ Two more honest caveats:
   back sampled, so today's row keeps moving and is labelled accordingly.
 - **Days are UTC.** The API has no timezone concept; the Cloudflare
   dashboard renders in yours. Set the dashboard to UTC before comparing.
+
+### With Umami
+
+Umami does not sample: every count is exact, however old. Nothing is ever
+labelled as estimated, and the first week shows more than it does with
+Cloudflare, because the plugin reads your earlier days from Umami as well,
+back to **Keep daily rows for**.
+
+That takes a while. Umami has no request that returns a day's numbers for
+several days at once, so the plugin reads one closed day per step, newest
+first. While it is catching up, those steps take three of every four syncs
+that would otherwise read per-entry numbers: three days every two hours at
+the default interval, so 90 days arrive in about two and a half days. The
+fourth keeps the per-entry numbers moving meanwhile, and the chart grows
+backwards. Once caught up, the only day left to read is the one that ended
+last night. Today is read on every sync.
+
+- **Visits are Umami's visits.** Umami also counts visitors, which the
+  plugin does not show yet.
+- **Referrers have no direct line.** Umami lists referring domains only,
+  so visits that arrived without a referrer are in the totals and in no
+  row of the referrers table.
+- **Days are UTC here too.** Umami's dashboard shows days in your
+  timezone, so its daily figures differ from the plugin's near midnight.
+- **10,000 paths or more in one day** is more than the plugin reads in one
+  request. It reports that instead of storing part of a day.
 
 ## Who sees the numbers
 
@@ -346,6 +436,8 @@ different provider, not a plugin bug.
 What leaves your site: path strings and a site tag, to
 `api.cloudflare.com`. Nothing from your content.
 
+With Umami: the website ID and the hostnames to count, to `api.umami.is`.
+
 One account-model caveat: the token is account-scoped and `siteTag` is just
 a filter. If several client sites share one Cloudflare account, a token
 given to one site's CMS can read every site's analytics in that account.
@@ -355,8 +447,7 @@ One account per site owner, or accept and document it.
 
 - Referrers and countries beyond the last week. The plugin stores them per
   sync, not per day, so they cannot be summed over a longer range.
-- A second provider. The `Provider` interface is in place for Plausible,
-  which is also the answer for EU-storage requirements.
+- More providers. The `Provider` interface is in place for Plausible.
 - A Views column in the content list. EmDash lets only native admin code
   add one, which a sandboxed plugin cannot ship.
 - Large sites catch up slowly. Every sync step fits EmDash's sandbox limit

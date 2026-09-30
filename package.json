@@ -1,7 +1,7 @@
 {
 	"name": "@eisbachcode/emdash-plugin-analytics",
 	"version": "0.3.0",
-	"description": "EmDash plugin: Cloudflare Web Analytics on the dashboard and next to your content.",
+	"description": "EmDash plugin: Cloudflare Web Analytics or Umami on the dashboard and next to your content.",
 	"keywords": [
 		"emdash",
 		"emdash-plugin",
@@ -9,6 +9,7 @@
 		"plugin",
 		"analytics",
 		"cloudflare",
+		"umami",
 		"dashboard"
 	],
 	"license": "MIT",

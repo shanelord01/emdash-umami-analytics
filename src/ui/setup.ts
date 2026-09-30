@@ -12,13 +12,17 @@
  * Calls: the state, the settings, the task list, the waiting mark until the
  * first sync, and one discovery request to Cloudflare, which answers
  * access, site tag, the site list and the hostnames at once.
+ *
+ * Umami runs the same checks under its own names. Its discovery is one
+ * request as well, and a second only when the first is refused, to tell a
+ * wrong key from a website the key's user may not view.
  */
 
 import type { PluginContext } from "emdash/plugin";
 
 import { langOf, problemText, t, type Lang, type MessageKey, type Problem } from "../i18n.js";
 import { normalizeHost } from "../index/paths.js";
-import type { Result, Site } from "../providers/types.js";
+import type { ProviderId, Result, Site } from "../providers/types.js";
 import { readSettings, type AnalyticsSettings } from "../settings.js";
 import { buildProvider, readState, REFRESH_TASK, SYNC_TASK, WAITING_KEY, type SyncState } from "../sync/scheduler.js";
 import { addDays, utcDay, UNSAMPLED_WINDOW_DAYS } from "../sync/window.js";
@@ -65,10 +69,10 @@ export interface TaskFacts {
 
 export interface SetupFacts {
 	provider: AnalyticsSettings["provider"];
-	/** Settings keys the Cloudflare source still needs. */
+	/** Settings keys the data source still needs. */
 	missing: string[];
 	siteTag: string;
-	/** The hostnames the plugin counts; empty means every host the tag reports. */
+	/** The hostnames the plugin counts; empty means every host the site reports. */
 	hosts: string[];
 	siteUrl: string;
 	/** Null when nothing was asked: demo data, or credentials missing. */
@@ -89,7 +93,7 @@ export async function loadSetup(ctx: PluginContext, now: Date): Promise<SetupFac
 	const waitingSince = state.lastSync ? null : await ctx.kv.get<string>(WAITING_KEY);
 
 	let discovery: Result<Site[]> | null = null;
-	if (settings.ok && settings.settings.provider === "cloudflare") {
+	if (settings.ok && settings.settings.provider !== "demo") {
 		const provider = buildProvider(ctx, settings.settings);
 		const today = utcDay(now);
 		discovery = provider
@@ -120,12 +124,10 @@ export async function loadSetup(ctx: PluginContext, now: Date): Promise<SetupFac
 /** Every check, in the order a fix has to happen. */
 export function checkSetup(facts: SetupFacts, locale: string | undefined): Check[] {
 	const lang = langOf(locale);
-	const cloudflare = facts.provider === "cloudflare";
-	const checks: Check[] = [
-		{ id: "source", status: "ok", detail: t(lang, cloudflare ? "sourceCloudflare" : "sourceDemo") },
-	];
+	const words = wordsOf(facts.provider);
+	const checks: Check[] = [{ id: "source", status: "ok", detail: t(lang, words?.source ?? "sourceDemo") }];
 
-	if (cloudflare) checks.push(...cloudflareChecks(facts, lang));
+	if (words) checks.push(...providerChecks(facts, words, lang));
 
 	checks.push(
 		siteUrlCheck(facts, lang),
@@ -136,32 +138,108 @@ export function checkSetup(facts: SetupFacts, locale: string | undefined): Check
 	return checks;
 }
 
-function cloudflareChecks(facts: SetupFacts, lang: Lang): Check[] {
+/**
+ * The sentences of the provider checks, which name the provider's own
+ * terms: a token, an account and a site tag on Cloudflare, a key and a
+ * website ID on Umami. The checks themselves are the same.
+ */
+interface SourceWords {
+	source: MessageKey;
+	/** The settings key of the secret, whose saving can fail without an encryption key. */
+	secret: string;
+	encryptionHint: MessageKey;
+	needsCredentials: MessageKey;
+	accessOk: MessageKey;
+	needsAccess: MessageKey;
+	/** No site chosen, and discovery has sites to choose from. */
+	siteMissing: MessageKey;
+	/** No site chosen, and discovery found none. */
+	siteMissingNoSites: MessageKey;
+	/** A site is chosen, and discovery found other sites only. */
+	siteNotFound: MessageKey;
+	/** A site is chosen, and discovery found none at all. */
+	siteNotFoundNoSites: MessageKey;
+	needsSite: MessageKey;
+	hostsEvery: MessageKey;
+	hostsNone: MessageKey;
+	labels: Partial<Record<CheckId, MessageKey>>;
+	sitesTitle: MessageKey;
+	colSite: MessageKey;
+	sitesNote: MessageKey;
+}
+
+const CLOUDFLARE_WORDS: SourceWords = {
+	source: "sourceCloudflare",
+	secret: "cfApiToken",
+	encryptionHint: "encryptionKeyHint",
+	needsCredentials: "needsCredentials",
+	accessOk: "accessOk",
+	needsAccess: "needsAccess",
+	siteMissing: "siteTagMissing",
+	siteMissingNoSites: "accountNoTraffic",
+	siteNotFound: "siteTagNotFound",
+	siteNotFoundNoSites: "accountNoTraffic",
+	needsSite: "needsSiteTag",
+	hostsEvery: "hostsEvery",
+	hostsNone: "hostsNone",
+	labels: {},
+	sitesTitle: "sitesTitle",
+	colSite: "colSiteTag",
+	sitesNote: "sitesNote",
+};
+
+const UMAMI_WORDS: SourceWords = {
+	source: "sourceUmami",
+	secret: "umamiApiKey",
+	encryptionHint: "encryptionKeyHintUmami",
+	needsCredentials: "needsCredentialsUmami",
+	accessOk: "accessOkUmami",
+	needsAccess: "needsAccessUmami",
+	siteMissing: "websiteIdMissing",
+	siteMissingNoSites: "websiteIdMissingNoList",
+	siteNotFound: "websiteNoTraffic",
+	siteNotFoundNoSites: "websiteNoTraffic",
+	needsSite: "needsWebsiteId",
+	hostsEvery: "hostsEveryUmami",
+	hostsNone: "hostsNoneUmami",
+	labels: { credentials: "checkCredentialsUmami", access: "checkAccessUmami", siteTag: "checkWebsiteId" },
+	sitesTitle: "websitesTitle",
+	colSite: "colWebsiteId",
+	sitesNote: "websitesNote",
+};
+
+/** Null for demo data, which has no provider to check. */
+function wordsOf(provider: ProviderId): SourceWords | null {
+	if (provider === "demo") return null;
+	return provider === "umami" ? UMAMI_WORDS : CLOUDFLARE_WORDS;
+}
+
+function providerChecks(facts: SetupFacts, words: SourceWords, lang: Lang): Check[] {
 	if (facts.missing.length > 0) {
 		const problem: Problem = { key: "notConfigured", params: { missing: facts.missing.join(",") } };
 		const detail = [problemText(lang, problem)];
-		if (facts.missing.includes("cfApiToken")) detail.push(t(lang, "encryptionKeyHint"));
+		if (facts.missing.includes(words.secret)) detail.push(t(lang, words.encryptionHint));
 		return [
 			{ id: "credentials", status: "problem", detail: detail.join(" ") },
-			skipped("access", lang, "needsCredentials"),
-			skipped("siteTag", lang, "needsCredentials"),
-			skipped("hosts", lang, "needsCredentials"),
+			skipped("access", lang, words.needsCredentials),
+			skipped("siteTag", lang, words.needsCredentials),
+			skipped("hosts", lang, words.needsCredentials),
 		];
 	}
 
 	const credentials: Check = { id: "credentials", status: "ok", detail: t(lang, "credentialsSaved") };
 	const discovery = facts.discovery;
 	if (!discovery || !discovery.ok) {
-		const detail = discovery && !discovery.ok ? errorText(discovery, lang) : t(lang, "needsAccess");
+		const detail = discovery && !discovery.ok ? errorText(discovery, lang) : t(lang, words.needsAccess);
 		return [
 			credentials,
 			{ id: "access", status: "problem", detail },
-			skipped("siteTag", lang, "needsAccess"),
-			skipped("hosts", lang, "needsAccess"),
+			skipped("siteTag", lang, words.needsAccess),
+			skipped("hosts", lang, words.needsAccess),
 		];
 	}
 
-	const access: Check = { id: "access", status: "ok", detail: t(lang, "accessOk") };
+	const access: Check = { id: "access", status: "ok", detail: t(lang, words.accessOk) };
 	const sites = discovery.value;
 	const days = DISCOVERY_DAYS;
 
@@ -172,9 +250,9 @@ function cloudflareChecks(facts: SetupFacts, lang: Lang): Check[] {
 			{
 				id: "siteTag",
 				status: "problem",
-				detail: t(lang, sites.length > 0 ? "siteTagMissing" : "accountNoTraffic", { days }),
+				detail: t(lang, sites.length > 0 ? words.siteMissing : words.siteMissingNoSites, { days }),
 			},
-			skipped("hosts", lang, "needsSiteTag"),
+			skipped("hosts", lang, words.needsSite),
 		];
 	}
 
@@ -186,9 +264,9 @@ function cloudflareChecks(facts: SetupFacts, lang: Lang): Check[] {
 			{
 				id: "siteTag",
 				status: "problem",
-				detail: t(lang, sites.length > 0 ? "siteTagNotFound" : "accountNoTraffic", { days }),
+				detail: t(lang, sites.length > 0 ? words.siteNotFound : words.siteNotFoundNoSites, { days }),
 			},
-			skipped("hosts", lang, "needsSiteTag"),
+			skipped("hosts", lang, words.needsSite),
 		];
 	}
 
@@ -197,14 +275,14 @@ function cloudflareChecks(facts: SetupFacts, lang: Lang): Check[] {
 		status: "ok",
 		detail: t(lang, "siteTagFound", { tag: site.siteTag, count: formatCount(site.pageviews ?? 0, lang), days }),
 	};
-	return [credentials, access, siteTag, hostsCheck(facts, site, lang)];
+	return [credentials, access, siteTag, hostsCheck(facts, site, words, lang)];
 }
 
-function hostsCheck(facts: SetupFacts, site: Site, lang: Lang): Check {
+function hostsCheck(facts: SetupFacts, site: Site, words: SourceWords, lang: Lang): Check {
 	const reported = site.hosts.map(normalizeHost);
 	const list = (hosts: string[]) => hosts.join(", ");
 	if (facts.hosts.length === 0) {
-		return { id: "hosts", status: "ok", detail: t(lang, "hostsEvery", { hosts: list(reported) }) };
+		return { id: "hosts", status: "ok", detail: t(lang, words.hostsEvery, { hosts: list(reported) }) };
 	}
 
 	const filter = new Set(facts.hosts.map(normalizeHost));
@@ -214,7 +292,7 @@ function hostsCheck(facts: SetupFacts, site: Site, lang: Lang): Check {
 		return {
 			id: "hosts",
 			status: "problem",
-			detail: t(lang, "hostsNone", { reported: list(reported), counted: list([...filter]) }),
+			detail: t(lang, words.hostsNone, { reported: list(reported), counted: list([...filter]) }),
 		};
 	}
 	if (excluded.length > 0) {
@@ -366,6 +444,7 @@ export function renderSetup(facts: SetupFacts, backValue: number, locale: string
 	const lang = langOf(locale);
 	const checks = checkSetup(facts, locale);
 	const problems = checks.filter((check) => check.status === "problem").length;
+	const words = wordsOf(facts.provider) ?? CLOUDFLARE_WORDS;
 
 	const out: AnalyticsBlock[] = [
 		actions(
@@ -388,7 +467,7 @@ export function renderSetup(facts: SetupFacts, backValue: number, locale: string
 				{ key: "detail", label: t(lang, "colDetails"), format: "text" },
 			],
 			rows: checks.map((check) => ({
-				check: t(lang, CHECK_LABELS[check.id]),
+				check: t(lang, words.labels[check.id] ?? CHECK_LABELS[check.id]),
 				status: t(lang, STATUS_LABELS[check.status]),
 				detail: check.detail,
 			})),
@@ -406,24 +485,30 @@ export function renderSetup(facts: SetupFacts, backValue: number, locale: string
 	const siteTag = checks.find((check) => check.id === "siteTag");
 	const hosts = checks.find((check) => check.id === "hosts");
 	if (sites.length > 0 && (siteTag?.status === "problem" || hosts?.status === "problem")) {
-		out.push(header(t(lang, "sitesTitle")));
+		// A provider's list names its sites or counts their views, depending
+		// on what its discovery can tell. A column nothing fills is left out.
+		const named = sites.some((site) => site.name !== undefined);
+		const counted = sites.some((site) => site.pageviews !== undefined);
+		out.push(header(t(lang, words.sitesTitle)));
 		out.push(
 			table({
 				blockId: "analytics:setup:sites",
 				pageActionId: "analytics:setup:sites:page",
 				columns: [
-					{ key: "tag", label: t(lang, "colSiteTag"), format: "code" },
+					{ key: "tag", label: t(lang, words.colSite), format: "code" },
+					...(named ? [{ key: "name", label: t(lang, "colName"), format: "text" as const }] : []),
 					{ key: "hosts", label: t(lang, "colHostnames"), format: "text" },
-					{ key: "views", label: t(lang, "colViews"), format: "number" },
+					...(counted ? [{ key: "views", label: t(lang, "colViews"), format: "number" as const }] : []),
 				],
 				rows: sites.slice(0, SITES_SHOWN).map((site) => ({
 					tag: site.siteTag,
+					...(named && { name: site.name ?? "" }),
 					hosts: site.hosts.join(", "),
-					views: site.pageviews ?? 0,
+					...(counted && { views: site.pageviews ?? 0 }),
 				})),
 			}),
 		);
-		out.push(context(t(lang, "sitesNote", { days: DISCOVERY_DAYS })));
+		out.push(context(t(lang, words.sitesNote, { days: DISCOVERY_DAYS })));
 	}
 
 	return out;

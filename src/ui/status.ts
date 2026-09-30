@@ -46,7 +46,9 @@ export function emptyReason(state: SyncState, now: Date, locale: string | undefi
 	if (error) return error;
 	if (!state.lastSync) return t(lang, "firstSyncPending");
 	const age = formatAge(state.lastSync, now, lang);
-	return t(lang, "syncedNoViews", { age: age ?? t(lang, "recently") });
+	// The sentence names where the numbers should have come from and what to check there.
+	const key = state.provider === "umami" ? "syncedNoViewsUmami" : "syncedNoViews";
+	return t(lang, key, { age: age ?? t(lang, "recently") });
 }
 
 /** The stored failure in the reader's language; an unrecognized one as it came. */

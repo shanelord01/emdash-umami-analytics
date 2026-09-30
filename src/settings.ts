@@ -21,8 +21,10 @@ import type { ProviderId } from "./providers/types.js";
 
 export interface AnalyticsSettings {
 	provider: ProviderId;
+	/** The provider's credential: a Cloudflare API token, an Umami API key. */
 	apiToken: string;
 	accountId: string;
+	/** The site's id at the provider: a Cloudflare site tag, an Umami website ID. */
 	siteTag: string;
 	hosts: string[];
 	syncInterval: string;
@@ -52,10 +54,11 @@ export async function readSettings(ctx: PluginContext): Promise<SettingsResult> 
 	const raw = new Map<string, unknown>();
 	for (const entry of await ctx.settings.list()) raw.set(entry.key, entry.value);
 
-	const provider: ProviderId = raw.get("provider") === "demo" ? "demo" : "cloudflare";
-	const apiToken = str(raw.get("cfApiToken"));
+	const provider = providerOf(raw.get("provider"));
+	const umami = provider === "umami";
+	const apiToken = str(raw.get(umami ? "umamiApiKey" : "cfApiToken"));
 	const accountId = str(raw.get("cfAccountId"));
-	const siteTag = str(raw.get("cfSiteTag"));
+	const siteTag = str(raw.get(umami ? "umamiWebsiteId" : "cfSiteTag"));
 
 	const hosts = parseHosts(raw.get("hosts"), ctx.site.url);
 	const syncInterval = str(raw.get("syncInterval")) || DEFAULT_SYNC_INTERVAL;
@@ -64,6 +67,12 @@ export async function readSettings(ctx: PluginContext): Promise<SettingsResult> 
 
 	const partial = { provider, apiToken, accountId, siteTag, hosts, syncInterval, retentionDays, chunkSize };
 	if (provider === "demo") return { ok: true, settings: partial };
+
+	// Umami needs a key and nothing else: the website ID is optional in the
+	// same way as the site tag below.
+	if (umami) {
+		return apiToken ? { ok: true, settings: partial } : { ok: false, missing: ["umamiApiKey"], partial };
+	}
 
 	// The site tag is deliberately not required: the settings form says it
 	// can be left empty, and the sync then lists the sites that have
@@ -92,6 +101,10 @@ function parseHosts(raw: unknown, siteUrl: string): string[] {
 	return siteHosts(siteUrl);
 }
 
+function providerOf(value: unknown): ProviderId {
+	return value === "demo" || value === "umami" ? value : "cloudflare";
+}
+
 function str(value: unknown): string {
 	return typeof value === "string" ? value.trim() : "";
 }
@@ -106,6 +119,7 @@ export function missingSettingsMessage(missing: string[]): string {
 	const labels: Record<string, string> = {
 		cfApiToken: "an API token with Account → Account Analytics → Read",
 		cfAccountId: "the Cloudflare account ID",
+		umamiApiKey: "an Umami API key",
 	};
 	const parts = missing.map((key) => labels[key] ?? key);
 	return `Analytics is not configured yet: add ${listPhrase(parts)} in the plugin's settings.`;
