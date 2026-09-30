@@ -17,39 +17,24 @@
  * `pnpm query-counts` flat.
  */
 
-export type BeaconProvider = "cloudflare" | "umami";
+export type BeaconProvider = "umami";
 
 export interface AnalyticsBeaconOptions {
-	/** Whose beacon to inject. Cloudflare's unless said otherwise. */
+	/** Whose tracker to inject. Umami's is the only one, named so the option does not have to change later. */
 	provider?: BeaconProvider;
 	/**
-	 * The Cloudflare Web Analytics **site token** — the `token` value in the
-	 * beacon snippet.
-	 *
-	 * This is not the site tag. They are different values, and the CMS side
-	 * of this plugin needs the *tag*. Confirmed against the live API on
-	 * 2026-09-20: every site on the account reports two different values.
-	 */
-	token?: string;
-	/**
-	 * Cloudflare has auto-tracked soft navigations since 2026-08-20, which
-	 * is what an Astro site using `<ClientRouter />` wants. Set `false` to
-	 * opt out; leaving it unset keeps Cloudflare's own default.
-	 */
-	spa?: boolean;
-	/**
-	 * Umami: the website ID, the `data-website-id` value in Umami's tracking
-	 * code. The CMS side of this plugin takes the same value.
+	 * The website ID, the `data-website-id` value in Umami's tracking code.
+	 * The CMS side of this plugin takes the same value.
 	 */
 	websiteId?: string;
 	/**
-	 * Umami: where the tracker script is served. Umami Cloud's unless set;
-	 * a self-hosted Umami serves it at `https://your-host/script.js`.
+	 * Where the tracker script is served. Umami Cloud's unless set; a
+	 * self-hosted Umami serves it at `https://your-host/script.js`.
 	 */
 	scriptUrl?: string;
 	/**
-	 * Umami: hostnames the tracker may report from (`data-domains`). On any
-	 * other host, a preview deploy for one, it stays silent.
+	 * Hostnames the tracker may report from (`data-domains`). On any other
+	 * host, a preview deploy for one, it stays silent.
 	 */
 	domains?: string[];
 	/**
@@ -73,20 +58,18 @@ export interface AnalyticsBeaconOptions {
 	};
 	/**
 	 * Inject during `astro dev`. Off by default: a dev server reports under
-	 * the same site tag as production and would pollute real numbers with
+	 * the same website ID as production and would pollute real numbers with
 	 * localhost traffic.
 	 */
 	includeDev?: boolean;
 	/**
 	 * Environment variable that must equal `"true"` for the beacon to be
-	 * injected. Use it to keep preview deploys out of production numbers —
-	 * one Cloudflare site tag routinely covers `*.pages.dev` and
-	 * `*.workers.dev` hosts alongside the real domain.
+	 * injected. Use it to keep preview deploys out of production numbers:
+	 * a preview build carries the same website ID as the real domain.
 	 */
 	productionFlagEnv?: string;
 }
 
-const BEACON_SRC = "https://static.cloudflareinsights.com/beacon.min.js";
 const UMAMI_SCRIPT_SRC = "https://cloud.umami.is/script.js";
 
 /** The admin lives here and its pages have their own `<head>`. */
@@ -109,30 +92,23 @@ export interface AstroIntegrationLike {
 }
 
 export function analyticsBeacon(options: AnalyticsBeaconOptions = {}): AstroIntegrationLike {
-	const provider = options.provider ?? "cloudflare";
+	const provider = options.provider ?? "umami";
 
 	return {
 		name: "@eisbachcode/emdash-plugin-analytics/astro",
 		hooks: {
 			"astro:config:setup": ({ command, injectScript, logger }) => {
-				if (provider !== "cloudflare" && provider !== "umami") {
+				if (provider !== "umami") {
 					logger.warn(`Unknown analytics provider "${provider}"; no beacon injected.`);
 					return;
 				}
 
-				if (provider === "umami" && !options.websiteId) {
-					logger.warn(
-						"analyticsBeacon(): no `websiteId` given, so no beacon was injected. Pass the Umami website ID (the `data-website-id` value in Umami's tracking code).",
-					);
-					return;
-				}
-
-				// A missing token is named out loud rather than no-op'd: a
+				// A missing website ID is named out loud rather than no-op'd: a
 				// silent no-op here is a site that collects nothing and looks
 				// fine, which is the failure mode nobody notices for weeks.
-				if (provider === "cloudflare" && !options.token) {
+				if (!options.websiteId) {
 					logger.warn(
-						"analyticsBeacon(): no `token` given, so no beacon was injected. Pass the Cloudflare Web Analytics site token (the `token` value in the beacon snippet, not the site tag).",
+						"analyticsBeacon(): no `websiteId` given, so no beacon was injected. Pass the Umami website ID (the `data-website-id` value in Umami's tracking code).",
 					);
 					return;
 				}
@@ -165,20 +141,12 @@ export function analyticsBeacon(options: AnalyticsBeaconOptions = {}): AstroInte
  * plugin that runs in a visitor's browser, and it must never throw there.
  */
 export function buildBeaconScript(options: AnalyticsBeaconOptions): string {
-	const beaconConfig: Record<string, unknown> = { token: options.token };
-	if (options.spa === false) beaconConfig.spa = false;
-
-	// The vendor script and the attributes it reads its configuration from.
-	// Cloudflare parses one JSON attribute, which is why its value is
-	// stringified here and again below.
-	const umami = options.provider === "umami";
-	const src = umami ? options.scriptUrl || UMAMI_SCRIPT_SRC : BEACON_SRC;
-	const attributes: Array<[string, string]> = umami
-		? [
-				["data-website-id", options.websiteId ?? ""],
-				...(options.domains?.length ? [["data-domains", options.domains.join(",")] as [string, string]] : []),
-			]
-		: [["data-cf-beacon", JSON.stringify(beaconConfig)]];
+	// The tracker script and the attributes it reads its configuration from.
+	const src = options.scriptUrl || UMAMI_SCRIPT_SRC;
+	const attributes: Array<[string, string]> = [
+		["data-website-id", options.websiteId ?? ""],
+		...(options.domains?.length ? [["data-domains", options.domains.join(",")] as [string, string]] : []),
+	];
 
 	// Every value becomes a JavaScript string literal with `<` escaped:
 	// `</script>` inside an inline script would otherwise end the element

@@ -15,21 +15,14 @@ import { addDays, utcDay } from "../src/sync/window.js";
 export const NOW = new Date();
 export const TODAY = utcDay(NOW);
 
-export async function newHost(provider: "demo" | "cloudflare" | "umami" = "demo") {
+export async function newHost(provider: "demo" | "umami" = "demo") {
 	if (provider !== "demo") {
 		vi.stubEnv("EMDASH_ENCRYPTION_KEY", "emdash_enc_v1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
 	}
 	const runtime = await createPluginRuntimeTestHost({
 		site: { url: "https://example.test", locale: "en", trailingSlash: "always" },
 	});
-	if (provider === "cloudflare") {
-		const saved = await runtime.actions.plugin.updateSettings({
-			cfApiToken: "cfat_test",
-			cfAccountId: "acct-1",
-			cfSiteTag: "tag-1",
-		});
-		expect(saved).toMatchObject({ success: true });
-	} else if (provider === "umami") {
+	if (provider === "umami") {
 		const saved = await runtime.actions.plugin.updateSettings({
 			provider: "umami",
 			umamiApiKey: "umami_test",
@@ -196,12 +189,6 @@ export function pathsOf(count: number, prefix = "/p-"): string[] {
 
 export function daysBack(count: number): string[] {
 	return Array.from({ length: count }, (_, i) => addDays(TODAY, -i));
-}
-
-export function graphql(body: unknown): Response {
-	return new Response(JSON.stringify({ data: { viewer: { accounts: [body] } } }), {
-		headers: { "Content-Type": "application/json" },
-	});
 }
 
 export const tick = (runtime: PluginRuntimeTestHost, name = "sync") => () =>

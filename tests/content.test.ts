@@ -35,7 +35,7 @@ const row = (path: string, over: Partial<EntryRow> = {}): EntryRow => ({
 function input(over: Partial<ContentInput> = {}): ContentInput {
 	return {
 		view: DEFAULT_VIEW,
-		state: { phase: "overview", provider: "cloudflare", indexComplete: true, indexVersion: 2, lastSync: NOW.toISOString() },
+		state: { phase: "overview", provider: "umami", indexComplete: true, indexVersion: 2, lastSync: NOW.toISOString() },
 		collections: [
 			{ slug: "pages", label: "Pages" },
 			{ slug: "posts", label: "Posts" },

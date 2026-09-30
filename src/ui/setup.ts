@@ -4,39 +4,37 @@
  *
  * The generated settings form stays the only place to enter values; this
  * view only reads. It exists because most setup mistakes do not fail, they
- * produce zeroes: a site tag that is really the beacon token, a hostname
- * filter that excludes the host Cloudflare reports, a site without a
- * stored URL, a Worker without a Cron Trigger. None of those raises an
- * error the sync could record.
+ * produce zeroes: a website without the tracking script, a hostname
+ * filter that excludes the host Umami reports, a site without a stored
+ * URL, a Worker without a Cron Trigger. None of those raises an error the
+ * sync could record.
  *
  * Calls: the state, the settings, the task list, the waiting mark until the
- * first sync, and one discovery request to Cloudflare, which answers
- * access, site tag, the site list and the hostnames at once.
- *
- * Umami runs the same checks under its own names. With a website ID set
- * its discovery is one request as well, and a second only when the first
- * is refused, to tell a wrong key from a website the key's user may not
- * view. Without one it lists the user's websites and their teams', which
- * is six requests at most and, with the four calls above, ten.
+ * first sync, and the discovery. With a website ID set that is one request
+ * to Umami, which answers access, the website and its hostnames at once,
+ * and a second only when the first is refused, to tell a wrong key from a
+ * website the key's user may not view. Without one it lists the user's
+ * websites and their teams', which is six requests at most and, with the
+ * four calls above, ten.
  */
 
 import type { PluginContext } from "emdash/plugin";
 
 import { langOf, problemText, t, type Lang, type MessageKey, type Problem } from "../i18n.js";
 import { normalizeHost } from "../index/paths.js";
-import type { ProviderId, Result, Site } from "../providers/types.js";
+import type { Result, Site } from "../providers/types.js";
 import { readSettings, type AnalyticsSettings } from "../settings.js";
 import { buildProvider, readState, REFRESH_TASK, SYNC_TASK, WAITING_KEY, type SyncState } from "../sync/scheduler.js";
-import { addDays, utcDay, UNSAMPLED_WINDOW_DAYS } from "../sync/window.js";
+import { addDays, utcDay } from "../sync/window.js";
 import { actions, banner, button, code, context, header, table, type AnalyticsBlock } from "./blocks.js";
 import { formatAge, formatCount } from "./format.js";
 import { RANGE_ACTION, SETUP_ACTION } from "./page.js";
 
 /**
- * Discovery reads the exact window only. Over 30 days Cloudflare answers
- * from a sample, and a host with little traffic drops out of it.
+ * Discovery reads the last week: the hostnames a website reported lately
+ * are the ones the hostname filter has to match.
  */
-const DISCOVERY_DAYS = UNSAMPLED_WINDOW_DAYS;
+const DISCOVERY_DAYS = 7;
 
 /** How late a requested one-shot sync may run before the scheduler counts as stopped. */
 const ONESHOT_GRACE_MS = 10 * 60_000;
@@ -104,7 +102,7 @@ export async function loadSetup(ctx: PluginContext, now: Date): Promise<SetupFac
 	}
 
 	return {
-		provider: values.provider ?? "cloudflare",
+		provider: values.provider ?? "umami",
 		missing: settings.ok ? [] : settings.missing,
 		siteTag: values.siteTag ?? "",
 		hosts: values.hosts ?? [],
@@ -126,10 +124,10 @@ export async function loadSetup(ctx: PluginContext, now: Date): Promise<SetupFac
 /** Every check, in the order a fix has to happen. */
 export function checkSetup(facts: SetupFacts, locale: string | undefined): Check[] {
 	const lang = langOf(locale);
-	const words = wordsOf(facts.provider);
-	const checks: Check[] = [{ id: "source", status: "ok", detail: t(lang, words?.source ?? "sourceDemo") }];
+	const umami = facts.provider === "umami";
+	const checks: Check[] = [{ id: "source", status: "ok", detail: t(lang, umami ? "sourceUmami" : "sourceDemo") }];
 
-	if (words) checks.push(...providerChecks(facts, words, lang));
+	if (umami) checks.push(...providerChecks(facts, lang));
 
 	checks.push(
 		siteUrlCheck(facts, lang),
@@ -140,108 +138,32 @@ export function checkSetup(facts: SetupFacts, locale: string | undefined): Check
 	return checks;
 }
 
-/**
- * The sentences of the provider checks, which name the provider's own
- * terms: a token, an account and a site tag on Cloudflare, a key and a
- * website ID on Umami. The checks themselves are the same.
- */
-interface SourceWords {
-	source: MessageKey;
-	/** The settings key of the secret, whose saving can fail without an encryption key. */
-	secret: string;
-	encryptionHint: MessageKey;
-	needsCredentials: MessageKey;
-	accessOk: MessageKey;
-	needsAccess: MessageKey;
-	/** No site chosen, and discovery has sites to choose from. */
-	siteMissing: MessageKey;
-	/** No site chosen, and discovery found none. */
-	siteMissingNoSites: MessageKey;
-	/** A site is chosen, and discovery found other sites only. */
-	siteNotFound: MessageKey;
-	/** A site is chosen, and discovery found none at all. */
-	siteNotFoundNoSites: MessageKey;
-	needsSite: MessageKey;
-	hostsEvery: MessageKey;
-	hostsNone: MessageKey;
-	labels: Partial<Record<CheckId, MessageKey>>;
-	sitesTitle: MessageKey;
-	colSite: MessageKey;
-	sitesNote: MessageKey;
-}
-
-const CLOUDFLARE_WORDS: SourceWords = {
-	source: "sourceCloudflare",
-	secret: "cfApiToken",
-	encryptionHint: "encryptionKeyHint",
-	needsCredentials: "needsCredentials",
-	accessOk: "accessOk",
-	needsAccess: "needsAccess",
-	siteMissing: "siteTagMissing",
-	siteMissingNoSites: "accountNoTraffic",
-	siteNotFound: "siteTagNotFound",
-	siteNotFoundNoSites: "accountNoTraffic",
-	needsSite: "needsSiteTag",
-	hostsEvery: "hostsEvery",
-	hostsNone: "hostsNone",
-	labels: {},
-	sitesTitle: "sitesTitle",
-	colSite: "colSiteTag",
-	sitesNote: "sitesNote",
-};
-
-const UMAMI_WORDS: SourceWords = {
-	source: "sourceUmami",
-	secret: "umamiApiKey",
-	encryptionHint: "encryptionKeyHintUmami",
-	needsCredentials: "needsCredentialsUmami",
-	accessOk: "accessOkUmami",
-	needsAccess: "needsAccessUmami",
-	siteMissing: "websiteIdMissing",
-	siteMissingNoSites: "websiteIdMissingNoList",
-	siteNotFound: "websiteNoTraffic",
-	siteNotFoundNoSites: "websiteNoTraffic",
-	needsSite: "needsWebsiteId",
-	hostsEvery: "hostsEveryUmami",
-	hostsNone: "hostsNoneUmami",
-	labels: { credentials: "checkCredentialsUmami", access: "checkAccessUmami", siteTag: "checkWebsiteId" },
-	sitesTitle: "websitesTitle",
-	colSite: "colWebsiteId",
-	sitesNote: "websitesNote",
-};
-
-/** Null for demo data, which has no provider to check. */
-function wordsOf(provider: ProviderId): SourceWords | null {
-	if (provider === "demo") return null;
-	return provider === "umami" ? UMAMI_WORDS : CLOUDFLARE_WORDS;
-}
-
-function providerChecks(facts: SetupFacts, words: SourceWords, lang: Lang): Check[] {
+function providerChecks(facts: SetupFacts, lang: Lang): Check[] {
 	if (facts.missing.length > 0) {
 		const problem: Problem = { key: "notConfigured", params: { missing: facts.missing.join(",") } };
 		const detail = [problemText(lang, problem)];
-		if (facts.missing.includes(words.secret)) detail.push(t(lang, words.encryptionHint));
+		if (facts.missing.includes("umamiApiKey")) detail.push(t(lang, "encryptionKeyHintUmami"));
 		return [
 			{ id: "credentials", status: "problem", detail: detail.join(" ") },
-			skipped("access", lang, words.needsCredentials),
-			skipped("siteTag", lang, words.needsCredentials),
-			skipped("hosts", lang, words.needsCredentials),
+			skipped("access", lang, "needsCredentialsUmami"),
+			skipped("siteTag", lang, "needsCredentialsUmami"),
+			skipped("hosts", lang, "needsCredentialsUmami"),
 		];
 	}
 
 	const credentials: Check = { id: "credentials", status: "ok", detail: t(lang, "credentialsSaved") };
 	const discovery = facts.discovery;
 	if (!discovery || !discovery.ok) {
-		const detail = discovery && !discovery.ok ? errorText(discovery, lang) : t(lang, words.needsAccess);
+		const detail = discovery && !discovery.ok ? errorText(discovery, lang) : t(lang, "needsAccessUmami");
 		return [
 			credentials,
 			{ id: "access", status: "problem", detail },
-			skipped("siteTag", lang, words.needsAccess),
-			skipped("hosts", lang, words.needsAccess),
+			skipped("siteTag", lang, "needsAccessUmami"),
+			skipped("hosts", lang, "needsAccessUmami"),
 		];
 	}
 
-	const access: Check = { id: "access", status: "ok", detail: t(lang, words.accessOk) };
+	const access: Check = { id: "access", status: "ok", detail: t(lang, "accessOkUmami") };
 	const sites = discovery.value;
 	const days = DISCOVERY_DAYS;
 
@@ -252,9 +174,9 @@ function providerChecks(facts: SetupFacts, words: SourceWords, lang: Lang): Chec
 			{
 				id: "siteTag",
 				status: "problem",
-				detail: t(lang, sites.length > 0 ? words.siteMissing : words.siteMissingNoSites, { days }),
+				detail: t(lang, sites.length > 0 ? "websiteIdMissing" : "websiteIdMissingNoList", { days }),
 			},
-			skipped("hosts", lang, words.needsSite),
+			skipped("hosts", lang, "needsWebsiteId"),
 		];
 	}
 
@@ -266,9 +188,9 @@ function providerChecks(facts: SetupFacts, words: SourceWords, lang: Lang): Chec
 			{
 				id: "siteTag",
 				status: "problem",
-				detail: t(lang, sites.length > 0 ? words.siteNotFound : words.siteNotFoundNoSites, { days }),
+				detail: t(lang, "websiteNoTraffic", { days }),
 			},
-			skipped("hosts", lang, words.needsSite),
+			skipped("hosts", lang, "needsWebsiteId"),
 		];
 	}
 
@@ -277,14 +199,14 @@ function providerChecks(facts: SetupFacts, words: SourceWords, lang: Lang): Chec
 		status: "ok",
 		detail: t(lang, "siteTagFound", { tag: site.siteTag, count: formatCount(site.pageviews ?? 0, lang), days }),
 	};
-	return [credentials, access, siteTag, hostsCheck(facts, site, words, lang)];
+	return [credentials, access, siteTag, hostsCheck(facts, site, lang)];
 }
 
-function hostsCheck(facts: SetupFacts, site: Site, words: SourceWords, lang: Lang): Check {
+function hostsCheck(facts: SetupFacts, site: Site, lang: Lang): Check {
 	const reported = site.hosts.map(normalizeHost);
 	const list = (hosts: string[]) => hosts.join(", ");
 	if (facts.hosts.length === 0) {
-		return { id: "hosts", status: "ok", detail: t(lang, words.hostsEvery, { hosts: list(reported) }) };
+		return { id: "hosts", status: "ok", detail: t(lang, "hostsEveryUmami", { hosts: list(reported) }) };
 	}
 
 	const filter = new Set(facts.hosts.map(normalizeHost));
@@ -294,7 +216,7 @@ function hostsCheck(facts: SetupFacts, site: Site, words: SourceWords, lang: Lan
 		return {
 			id: "hosts",
 			status: "problem",
-			detail: t(lang, words.hostsNone, { reported: list(reported), counted: list([...filter]) }),
+			detail: t(lang, "hostsNoneUmami", { reported: list(reported), counted: list([...filter]) }),
 		};
 	}
 	if (excluded.length > 0) {
@@ -408,9 +330,9 @@ function intervalText(minutes: number, lang: Lang): string {
 
 const CHECK_LABELS: Record<CheckId, MessageKey> = {
 	source: "checkSource",
-	credentials: "checkCredentials",
-	access: "checkAccess",
-	siteTag: "checkSiteTag",
+	credentials: "checkCredentialsUmami",
+	access: "checkAccessUmami",
+	siteTag: "checkWebsiteId",
 	hosts: "checkHosts",
 	siteUrl: "checkSiteUrl",
 	index: "checkIndex",
@@ -446,7 +368,6 @@ export function renderSetup(facts: SetupFacts, backValue: number, locale: string
 	const lang = langOf(locale);
 	const checks = checkSetup(facts, locale);
 	const problems = checks.filter((check) => check.status === "problem").length;
-	const words = wordsOf(facts.provider) ?? CLOUDFLARE_WORDS;
 
 	const out: AnalyticsBlock[] = [
 		actions(
@@ -469,7 +390,7 @@ export function renderSetup(facts: SetupFacts, backValue: number, locale: string
 				{ key: "detail", label: t(lang, "colDetails"), format: "text" },
 			],
 			rows: checks.map((check) => ({
-				check: t(lang, words.labels[check.id] ?? CHECK_LABELS[check.id]),
+				check: t(lang, CHECK_LABELS[check.id]),
 				status: t(lang, STATUS_LABELS[check.status]),
 				detail: check.detail,
 			})),
@@ -491,13 +412,13 @@ export function renderSetup(facts: SetupFacts, backValue: number, locale: string
 		// on what its discovery can tell. A column nothing fills is left out.
 		const named = sites.some((site) => site.name !== undefined);
 		const counted = sites.some((site) => site.pageviews !== undefined);
-		out.push(header(t(lang, words.sitesTitle)));
+		out.push(header(t(lang, "websitesTitle")));
 		out.push(
 			table({
 				blockId: "analytics:setup:sites",
 				pageActionId: "analytics:setup:sites:page",
 				columns: [
-					{ key: "tag", label: t(lang, words.colSite), format: "code" },
+					{ key: "tag", label: t(lang, "colWebsiteId"), format: "code" },
 					...(named ? [{ key: "name", label: t(lang, "colName"), format: "text" as const }] : []),
 					{ key: "hosts", label: t(lang, "colHostnames"), format: "text" },
 					...(counted ? [{ key: "views", label: t(lang, "colViews"), format: "number" as const }] : []),
@@ -510,7 +431,7 @@ export function renderSetup(facts: SetupFacts, backValue: number, locale: string
 				})),
 			}),
 		);
-		out.push(context(t(lang, words.sitesNote, { days: DISCOVERY_DAYS })));
+		out.push(context(t(lang, "websitesNote", { days: DISCOVERY_DAYS })));
 	}
 
 	return out;

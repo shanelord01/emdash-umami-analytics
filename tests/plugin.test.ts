@@ -2,8 +2,9 @@ import { validateBlocks } from "@emdash-cms/blocks/server";
 import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash-cms/plugin-test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { GRAPHQL_ENDPOINT } from "../src/providers/cloudflare.js";
 import type { SyncState } from "../src/sync/scheduler.js";
+import { addDays, utcDay } from "../src/sync/window.js";
+import { newHost as hostFor, respondUmamiOverview, UMAMI_WEBSITE, umamiUrl } from "./host.js";
 
 /**
  * End-to-end through the real sandbox: the plugin is built, loaded into
@@ -163,7 +164,7 @@ describe("the refresh button", () => {
 		expect(validateBlocks(response.blocks).valid).toBe(true);
 		expect(response.toast?.type).toBe("error");
 		expect(String(response.toast?.message)).toMatch(/not configured yet/i);
-		expect(String(response.toast?.message)).toMatch(/Account Analytics/);
+		expect(String(response.toast?.message)).toMatch(/an Umami API key/);
 	});
 
 	it("asks for a tick instead of syncing inside the request", async () => {
@@ -199,9 +200,9 @@ describe("a tick without credentials", () => {
 		expect(JSON.stringify(response.blocks)).toMatch(/not configured yet/i);
 	});
 
-	it("never calls Cloudflare", async () => {
-		// `api.cloudflare.com` is the only allowed host and there is no token,
-		// so the tick must fail on configuration before it opens a socket.
+	it("never calls Umami without a key", async () => {
+		// There is no key to send, so the tick must fail on configuration
+		// before it opens a socket.
 		host = await newHost();
 		await host.transport.invokeHook("cron", { name: "sync", scheduledAt: new Date().toISOString() });
 		expect(host.http.requests()).toEqual([]);
@@ -327,53 +328,31 @@ describe("the analytics page on day one", () => {
 	it("shows the provider's numbers before any sync has run", async () => {
 		// Waiting for the store would take hours to days on a fresh install,
 		// while the provider's own dashboard answers at once.
-		vi.stubEnv("EMDASH_ENCRYPTION_KEY", "emdash_enc_v1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-		host = await newHost();
-		await host.actions.plugin.updateSettings({ cfApiToken: "cfat_test", cfAccountId: "acct-1", cfSiteTag: "tag-1" });
-		const today = new Date().toISOString().slice(0, 10);
-		await host.http.respond(
-			GRAPHQL_ENDPOINT,
-			new Response(
-				JSON.stringify({
-					data: {
-						viewer: {
-							accounts: [
-								{
-									totals: [{ count: 4321, sum: { visits: 1234 }, avg: { sampleInterval: 1 } }],
-									series: [{ count: 4321, sum: { visits: 1234 }, avg: { sampleInterval: 1 }, dimensions: { date: today } }],
-									pages: [{ count: 999, sum: { visits: 500 }, avg: { sampleInterval: 1 }, dimensions: { requestPath: "/blog/hello/" } }],
-									refs: [{ count: 10, sum: { visits: 9 }, dimensions: { refererHost: "news.example" } }],
-									geo: [],
-								},
-							],
-						},
-					},
-				}),
-				{ headers: { "Content-Type": "application/json" } },
-			),
-		);
+		host = await hostFor("umami");
+		const today = utcDay(new Date());
+		await respondUmamiOverview(host, { since: addDays(today, -6), today: [4321, 1234], yesterday: [0, 0], paths: [["/blog/hello/", 999, 500]] });
 
 		const response = await host.admin.act("/analytics", "analytics:range", { value: 7 });
 		const text = JSON.stringify(response.blocks);
 		expect(text).toContain("/blog/hello/");
-		expect(text).toContain("news.example");
+		expect(text).toContain("google.com");
+		expect(text).toContain("4,321");
 		expect(text).not.toMatch(/No analytics yet/);
 		await expect(host.inspect.storage.list("rollup")).resolves.toEqual([]);
 	});
 
-	it("never asks for more than the exact window, whatever the range", async () => {
-		// A sampled 30-day answer put a week's 25 page views on one day as
-		// 300. Older days come from the store or are not shown.
-		vi.stubEnv("EMDASH_ENCRYPTION_KEY", "emdash_enc_v1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-		host = await newHost();
-		await host.actions.plugin.updateSettings({ cfApiToken: "cfat_test", cfAccountId: "acct-1", cfSiteTag: "tag-1" });
-		const empty = { data: { viewer: { accounts: [{ totals: [], series: [], pages: [], refs: [], geo: [] }] } } };
-		await host.http.respond(GRAPHQL_ENDPOINT, new Response(JSON.stringify(empty), { headers: { "Content-Type": "application/json" } }));
+	it("asks for the whole range, since every day of it is exact", async () => {
+		// A provider that samples older days would be asked for its exact
+		// window only. Umami has no such window, so top entries, referrers
+		// and countries cover all 30 days.
+		host = await hostFor("umami");
+		const today = utcDay(new Date());
+		await respondUmamiOverview(host, { since: addDays(today, -29) });
 
 		await host.admin.act("/analytics", "analytics:range", { value: 30 });
 
-		const body = JSON.parse(new TextDecoder().decode(host.http.requests()[0]!.body)) as { variables: { since: string } };
-		const exactStart = new Date(Date.now() - 6 * 86_400_000).toISOString().slice(0, 10);
-		expect(body.variables.since).toBe(exactStart);
+		const asked = host.http.requests().map((request) => request.url);
+		expect(asked).toContain(umamiUrl.metrics("path", addDays(today, -29), today, 100));
+		expect(asked.every((url) => url.includes(UMAMI_WEBSITE))).toBe(true);
 	});
 });

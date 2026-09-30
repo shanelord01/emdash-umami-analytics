@@ -100,9 +100,8 @@ export function formatDay(day: string, locale?: string): string {
  * Suffix marking numbers the provider estimated rather than counted.
  *
  * Silence here is what makes an editor compare the widget with the
- * provider's dashboard and trust neither. Named only for Cloudflare, whose
- * sampling is the reason; demo data merely imitates it. A store written
- * before the provider was recorded holds Cloudflare's numbers.
+ * provider's dashboard and trust neither. Umami counts every page view, so
+ * only demo data, which imitates a sampling provider, is ever marked.
  */
 export function qualifier(
 	opts: { estimated?: boolean; provisional?: boolean; provider?: string },
@@ -110,8 +109,7 @@ export function qualifier(
 ): string {
 	const lang = langOf(locale);
 	const notes: string[] = [];
-	const cloudflare = opts.provider === undefined || opts.provider === "cloudflare";
-	if (opts.estimated) notes.push(t(lang, cloudflare ? "estimatedCloudflare" : "estimatedSampled"));
+	if (opts.estimated) notes.push(t(lang, "estimatedSampled"));
 	if (opts.provisional) notes.push(t(lang, "todayCounting"));
 	return notes.join(" · ");
 }

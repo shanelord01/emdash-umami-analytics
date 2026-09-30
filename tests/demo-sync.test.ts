@@ -102,15 +102,15 @@ describe("demo data", () => {
 		expect(pathsRan).toBe(true);
 	});
 
-	it("clears the generated numbers when the source is switched back to Cloudflare", async () => {
+	it("clears the generated numbers when the source is switched back to Umami", async () => {
 		// Left in place, demo numbers would render as if they were the
-		// site's real traffic the moment Cloudflare was configured.
+		// site's real traffic the moment Umami was configured.
 		host = await demoHost();
 		const today = utcDay(new Date());
 		await refreshAndRun(host);
 		await expect(host.inspect.storage.get("rollup", today)).resolves.not.toBeNull();
 
-		await host.fixtures.plugin.setting("provider", "cloudflare");
+		await host.fixtures.plugin.setting("provider", "umami");
 		await tick(host);
 
 		await expect(host.inspect.storage.get("rollup", today)).resolves.toBeNull();

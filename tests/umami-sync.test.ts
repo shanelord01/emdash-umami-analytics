@@ -89,6 +89,23 @@ describe("the overview tick", () => {
 		expect((await state(host)).lastError).toBeUndefined();
 	});
 
+	it("keeps stored numbers when the state names no provider", async () => {
+		// A switch of data source clears the store. A state that records no
+		// provider is not a switch: nothing says whose numbers these are, and
+		// assuming some other provider's would delete them.
+		host = await newHost("umami");
+		const old = addDays(TODAY, -5);
+		await host.fixtures.plugin.storage("rollup", old, { date: old, pageviews: 9, visits: 4, sampleInterval: 1, fetchedAt: NOW.toISOString() });
+		await setState(host, { phase: "overview", lastSync: NOW.toISOString() });
+		await respondUmamiOverview(host);
+
+		await tick(host)();
+
+		expect(await rollup(host, old)).toMatchObject({ pageviews: 9 });
+		expect(await rollup(host, TODAY)).not.toBeNull();
+		expect((await state(host)).provider).toBe("umami");
+	});
+
 	it("sends the key as a bearer token and nothing to any other host", async () => {
 		host = await newHost("umami");
 		await respondUmamiOverview(host);
@@ -539,7 +556,6 @@ describe("the analytics page", () => {
 		expect(host.http.requests()).toHaveLength(5);
 		expect(text).toContain(`https://cloud.umami.is/websites/${UMAMI_WEBSITE}`);
 		expect(text).toContain("Open in Umami");
-		expect(text).not.toContain("Open in Cloudflare");
 		// Umami is exact over the whole range, so nothing is qualified as
 		// covering only part of it, and nothing as estimated.
 		expect(text).toContain("Per-entry numbers for the last 30 days.");
@@ -549,14 +565,13 @@ describe("the analytics page", () => {
 		expect(entries.rows).toEqual([{ entry: "/a/", collection: "posts", path: "/a/", views: 30, visits: 13 }]);
 	});
 
-	it("says Umami when a sync found no page views", async () => {
+	it("says what to check when a sync found no page views", async () => {
 		host = await newHost("umami");
 		await setState(host, { ...caughtUp, phase: "overview" });
 
 		const widget = JSON.stringify((await host.admin.loadWidget("traffic")).blocks);
 
 		expect(widget).toMatch(/Umami reported no page views for this website/);
-		expect(widget).not.toMatch(/Cloudflare/);
 	});
 });
 

@@ -15,7 +15,7 @@
 import type { Problem } from "../i18n.js";
 import type { Day } from "../sync/window.js";
 
-export type ProviderId = "cloudflare" | "demo" | "umami";
+export type ProviderId = "umami" | "demo";
 
 export type Metric = "pageviews" | "visits" | "uniques";
 export type Breakdown = "referrers" | "countries" | "devices";
@@ -110,7 +110,7 @@ export interface Overview {
 }
 
 export interface Site {
-	/** The site's id at the provider: a Cloudflare site tag, an Umami website ID. */
+	/** The site's id at the provider: an Umami website ID. */
 	siteTag: string;
 	/** What the provider calls the site, when it has a name for it. */
 	name?: string;

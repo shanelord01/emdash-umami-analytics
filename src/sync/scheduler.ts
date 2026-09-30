@@ -33,9 +33,8 @@
 
 import type { PluginContext } from "emdash/plugin";
 
-import { failure, type MessageKey, type Problem } from "../i18n.js";
+import { failure, type Problem } from "../i18n.js";
 import { bootstrapIndex, INDEX_VERSION, type IndexCursor } from "../index/bootstrap.js";
-import { createCloudflareProvider } from "../providers/cloudflare.js";
 import { createDemoProvider } from "../providers/demo.js";
 import { createUmamiProvider } from "../providers/umami.js";
 import type { DateRange, Overview, Provider, ProviderId } from "../providers/types.js";
@@ -100,7 +99,7 @@ export interface SyncState {
 	countries?: Array<{ label: string; visits: number }>;
 	/** First day of the window the referrer, country and top-path snapshot covers. */
 	snapshotSince?: Day;
-	/** True when the last overview was served from Cloudflare's sample. */
+	/** True when the last overview's numbers were estimated from a sample. */
 	estimated?: boolean;
 	sitesHint?: string;
 	/**
@@ -260,20 +259,10 @@ export function buildProvider(ctx: PluginContext, settings: AnalyticsSettings): 
 	}
 	if (!ctx.http) return null;
 	const http = ctx.http;
-	if (settings.provider === "umami") {
-		return createUmamiProvider({
-			apiKey: settings.apiToken,
-			websiteId: settings.siteTag,
-			apiUrl: settings.umamiApiUrl,
-			hosts: settings.hosts,
-			trailingSlash: ctx.site.trailingSlash,
-			fetch: (url, init) => http.fetch(url, init),
-		});
-	}
-	return createCloudflareProvider({
-		apiToken: settings.apiToken,
-		accountId: settings.accountId,
-		siteTag: settings.siteTag,
+	return createUmamiProvider({
+		apiKey: settings.apiToken,
+		websiteId: settings.siteTag,
+		apiUrl: settings.umamiApiUrl,
 		hosts: settings.hosts,
 		trailingSlash: ctx.site.trailingSlash,
 		fetch: (url, init) => http.fetch(url, init),
@@ -312,11 +301,14 @@ export async function runSync(
 	const result = await readSettings(ctx);
 
 	// Numbers from one provider must never be read as another's: demo data
-	// left behind after switching to Cloudflare would look like real
-	// traffic. So a switch clears storage before anything else happens,
-	// including before a missing credential stops the tick.
-	const target = result.ok ? result.settings.provider : (result.partial.provider ?? "cloudflare");
-	const stored = state.provider ?? (state.lastSync ? "cloudflare" : undefined);
+	// left behind after switching to Umami would look like real traffic. So
+	// a switch clears storage before anything else happens, including before
+	// a missing credential stops the tick.
+	//
+	// Every phase that stores a provider's numbers records the provider with
+	// them, so a state without one holds nothing to clear.
+	const target = result.ok ? result.settings.provider : (result.partial.provider ?? "umami");
+	const stored = state.provider;
 	if (stored && stored !== target) return await runWipe(ctx, state, target, now);
 
 	if (!result.ok) {
@@ -331,7 +323,7 @@ export async function runSync(
 		return await fail(ctx, state, state.phase, error, now, problem);
 	}
 
-	// A site tag is optional in the form. Without one there is nothing to
+	// A website ID is optional in the form. Without one there is nothing to
 	// query, but the operator gets a usable hint instead of silence. Demo
 	// data has no sites to choose between.
 	if (!settings.siteTag && settings.provider !== "demo") {
@@ -419,8 +411,8 @@ async function runOverviewPhase(
 	now: Date,
 ): Promise<SyncOutcome> {
 	// The first overview reaches back as far as the provider stays exact, so
-	// a fresh install starts with that much history (Cloudflare: eight days,
-	// demo: ninety). A wide-pull provider's overview carries two days of
+	// a fresh install starts with that much history (demo: ninety days). A
+	// wide-pull provider's overview carries two days of
 	// totals whatever the range, so it has nothing to gain from a wider
 	// first window: its history arrives through the history pass.
 	const exactDays = provider.capabilities.exactWindowDays;
@@ -726,21 +718,9 @@ export async function runReconcile(
 	return { deleted, more };
 }
 
-/** The site hint's sentences for a provider that does not call its sites site tags. */
-const SITE_HINTS: Partial<Record<ProviderId, { sites: MessageKey; none: MessageKey }>> = {
-	umami: { sites: "noWebsiteIdSites", none: "noWebsiteIdNoList" },
-};
-
 /**
- * No site tag configured: name the sites this token can actually see.
- *
- * Discovery runs through the analytics dataset rather than
- * `rum/site_info/list`, which needs Account Settings Read — a scope that
- * also grants read access to account membership, and not something to ask
- * for so a dropdown can be populated.
- *
- * The hint is worded in the provider's own terms: a site tag on
- * Cloudflare, a website ID on Umami.
+ * No website ID configured: name the websites this key can actually see,
+ * so the operator has an ID to copy instead of silence.
  */
 async function suggestSite(
 	ctx: PluginContext,
@@ -754,16 +734,15 @@ async function suggestSite(
 	};
 	const res = await provider.discoverSites(range);
 
-	const hint = SITE_HINTS[provider.id] ?? { sites: "noSiteTagSites", none: "noSiteTagNoTraffic" };
 	const found = res.ok
 		? res.value.length > 0
-			? failure(hint.sites, {
+			? failure("noWebsiteIdSites", {
 					sites: res.value
 						.slice(0, 5)
 						.map((s) => `${s.siteTag}${s.hosts[0] ? ` (${s.hosts[0]})` : ""}`)
 						.join(", "),
 				})
-			: failure(hint.none)
+			: failure("noWebsiteIdNoList")
 		: res;
 
 	await writeState(ctx, {

@@ -1,7 +1,6 @@
 import type { PluginRuntimeTestHost } from "@emdash-cms/plugin-test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { GRAPHQL_ENDPOINT, RUM_DATASET } from "../src/providers/cloudflare.js";
 import { WAITING_KEY, type SyncState } from "../src/sync/scheduler.js";
 import { addDays } from "../src/sync/window.js";
 import { PAGE_REFRESH_ACTION, RANGE_ACTION, SETUP_ACTION } from "../src/ui/page.js";
@@ -9,7 +8,6 @@ import { TOOL_ROUTES } from "../src/tools/load.js";
 import { bridgeCalls, failNextCall } from "./bridge-calls.js";
 import {
 	daysBack,
-	graphql,
 	newHost,
 	NOW,
 	pathsOf,
@@ -54,23 +52,13 @@ afterEach(async () => {
 });
 
 describe("sync ticks", () => {
-	it("an overview tick", async () => {
-		host = await newHost("cloudflare");
-		const series = daysBack(8).map((date) => ({
-			count: 10,
-			sum: { visits: 5 },
-			avg: { sampleInterval: 1 },
-			dimensions: { date },
-		}));
-		await host.http.respond(
-			GRAPHQL_ENDPOINT,
-			graphql({ totals: [{ count: 80, sum: { visits: 40 } }], series, pages: [], refs: [], geo: [] }),
-		);
+	it("a first overview tick, which stores 91 days of demo history", async () => {
+		host = await newHost();
 
 		const calls = await bridgeCalls(tick(host));
 
 		expect(calls.length, calls.join(", ")).toBeLessThanOrEqual(LIMIT);
-		await expect(host.inspect.storage.get("rollup", addDays(TODAY, -7))).resolves.not.toBeNull();
+		await expect(host.inspect.storage.get("rollup", addDays(TODAY, -90))).resolves.not.toBeNull();
 	});
 
 	it("an index tick", async () => {
@@ -86,37 +74,25 @@ describe("sync ticks", () => {
 		expect(state?.indexed).toBeGreaterThanOrEqual(3);
 	});
 
-	it("a paths tick", async () => {
-		host = await newHost("cloudflare");
-		// More entries than one tick may ask about, each with traffic on every
-		// day of the window, none of it stored yet.
+	it("a paths tick of a provider that answers a whole window at once", async () => {
+		// Demo data is the one provider of that kind here. More entries than
+		// one tick may ask about, none of their rows stored yet.
+		host = await newHost();
 		const paths = pathsOf(40);
 		await seedEntries(host, paths);
-		await setState(host, { ...synced, phase: "paths", provider: "cloudflare" });
-
-		const window = daysBack(8);
-		const asked = paths.slice(0, PATHS_PER_TICK);
-		const rows = asked.flatMap((path) =>
-			window.map((date) => ({
-				count: 7,
-				sum: { visits: 3 },
-				avg: { sampleInterval: 1 },
-				dimensions: { date, requestPath: path },
-			})),
-		);
-		await host.http.respond(GRAPHQL_ENDPOINT, graphql({ [RUM_DATASET]: rows }));
+		await setState(host, { ...synced, phase: "paths" });
 
 		const calls = await bridgeCalls(tick(host));
 
 		expect(calls.length, calls.join(", ")).toBeLessThanOrEqual(LIMIT);
-		const sent = JSON.parse(new TextDecoder().decode(host.http.requests()[0]!.body)) as {
-			variables: { paths: string[] };
-		};
-		expect(sent.variables.paths.filter((path) => path.endsWith("/"))).toEqual(asked);
-		await expect(host.inspect.storage.get("daily", `${window[7]}|${asked[35]}`)).resolves.not.toBeNull();
-		// Eight days of seven views: the last seven make views7, all eight the
-		// recent part of views30.
-		await expect(host.inspect.storage.get("entries", asked[35]!)).resolves.toMatchObject({ views7: 49, views30: 56 });
+		const state = await host.inspect.kv.get<SyncState>("state");
+		expect(state).toMatchObject({ phase: "overview", lastWork: "paths" });
+		expect(state?.cursor).toEqual(expect.any(String));
+		// Rows for the whole eight-day window, and the entries' counts with them.
+		const stored = await host.inspect.storage.list<{ date: string; path: string }>("daily");
+		expect(new Set(stored.map((row) => row.data.date)).size).toBe(8);
+		const counted = await host.inspect.storage.list<{ views7: number }>("entries");
+		expect(counted.some((row) => row.data.views7 > 0)).toBe(true);
 	});
 
 	it("every step of an older pass over more paths than one step can finish", async () => {
@@ -151,7 +127,7 @@ describe("sync ticks", () => {
 
 	it("every tick of a provider-switch wipe, until it completes", async () => {
 		host = await newHost();
-		await host.fixtures.plugin.setting("provider", "cloudflare");
+		await host.fixtures.plugin.setting("provider", "umami");
 		const paths = pathsOf(40);
 		await seedEntries(host, paths, 12);
 		await seedRollup(host, 150);
@@ -160,13 +136,13 @@ describe("sync ticks", () => {
 
 		let ticks = 0;
 		let state: SyncState | null = null;
-		for (; ticks < 20 && state?.provider !== "cloudflare"; ticks++) {
+		for (; ticks < 20 && state?.provider !== "umami"; ticks++) {
 			const calls = await bridgeCalls(tick(host));
 			expect(calls.length, `tick ${ticks}: ${calls.join(", ")}`).toBeLessThanOrEqual(LIMIT);
 			state = await host.inspect.kv.get<SyncState>("state");
 		}
 
-		expect(state?.provider).toBe("cloudflare");
+		expect(state?.provider).toBe("umami");
 		expect(ticks).toBeGreaterThan(1);
 		await expect(host.inspect.storage.list("rollup")).resolves.toEqual([]);
 		await expect(host.inspect.storage.list("daily")).resolves.toEqual([]);
@@ -217,17 +193,6 @@ describe("admin requests", () => {
 		expect(await host.inspect.kv.get(WAITING_KEY)).toEqual(expect.any(String));
 	});
 
-	it("a setup check on a Cloudflare site that has not synced yet", async () => {
-		host = await newHost("cloudflare");
-		await host.http.respond(
-			GRAPHQL_ENDPOINT,
-			graphql({ [RUM_DATASET]: [{ count: 5, dimensions: { siteTag: "tag-1", requestHost: "example.test" } }] }),
-		);
-		const calls = await bridgeCalls(() => host!.admin.act("/analytics", SETUP_ACTION, { value: 30 }));
-		expect(calls.length, calls.join(", ")).toBeLessThanOrEqual(LIMIT);
-		expect(host.http.requests()).toHaveLength(1);
-	});
-
 	it("a widget Refresh", async () => {
 		host = await newHost();
 		await withData(host);
@@ -242,21 +207,6 @@ describe("admin requests", () => {
 		const calls = await bridgeCalls(() => host!.admin.act("/analytics", RANGE_ACTION, { value: 90 }));
 		expect(calls.length, calls.join(", ")).toBeLessThanOrEqual(LIMIT);
 		expect(calls).toContain("storageGetMany");
-	});
-
-	it("an analytics page Refresh over 90 days, falling back to the store", async () => {
-		// The provider fails, so the page reads rollups and daily rows as
-		// well: its most expensive path.
-		host = await newHost("cloudflare");
-		await withData(host);
-		await host.http.respond(GRAPHQL_ENDPOINT, new Response("upstream down", { status: 502 }));
-		let toast: unknown;
-		const calls = await bridgeCalls(async () => {
-			toast = (await host!.admin.act("/analytics", PAGE_REFRESH_ACTION, { value: 90 })).toast;
-		});
-		expect(calls.length, calls.join(", ")).toBeLessThanOrEqual(LIMIT);
-		expect(toast).toMatchObject({ type: "error" });
-		expect(calls.filter((c) => c === "storageQuery").length).toBeGreaterThanOrEqual(5);
 	});
 });
 

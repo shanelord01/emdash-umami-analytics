@@ -58,9 +58,9 @@ export const MAX_DAY_PATHS = 10_000;
 
 /**
  * Umami does not sample, so a query is exact however far back it starts.
- * This is the longest history the plugin keeps.
+ * This is the longest history the plugin keeps (`MAX_RETENTION_DAYS`).
  */
-const EXACT_DAYS = 184;
+const EXACT_DAYS = 400;
 
 /** Paths read to rank the top pages. Umami orders by visitors, the table by page views. */
 const TOP_PATHS_READ = 100;

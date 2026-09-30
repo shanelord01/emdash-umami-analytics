@@ -61,8 +61,8 @@ describe("the demo provider", () => {
 	});
 
 	it("marks today as sampled and provisional, and closed days as exact", async () => {
-		// Mirrors Cloudflare, so the demo shows the same labels a real
-		// install does.
+		// Imitates a sampling provider, so the demo exercises the labels
+		// and the write guards that exist for one.
 		const overview = await overviewOf({ since: addDays(TODAY, -3), until: TODAY });
 		const today = overview.series.find((d) => d.date === TODAY)!;
 		const closed = overview.series.filter((d) => d.date !== TODAY);
@@ -96,7 +96,7 @@ describe("the demo provider", () => {
 		expect(res).toEqual({ ok: true, value: [] });
 	});
 
-	it("labels referrers and countries the way Cloudflare does", async () => {
+	it("labels direct traffic and gives countries as ISO codes", async () => {
 		const overview = await overviewOf({ since: addDays(TODAY, -6), until: TODAY });
 		expect(overview.referrers.map((r) => r.label)).toContain("(direct)");
 		for (const c of overview.countries) expect(c.label).toMatch(/^[A-Z]{2}$/);

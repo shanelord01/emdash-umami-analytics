@@ -14,7 +14,6 @@
 
 import { normalizePath, type TrailingSlash } from "../index/paths.js";
 import { daysBetween, enumerateDays, utcDay, type Day } from "../sync/window.js";
-import { DIRECT_REFERRER } from "./cloudflare.js";
 import type {
 	DailyRow,
 	DateRange,
@@ -28,6 +27,12 @@ import type {
 	Retention,
 	Site,
 } from "./types.js";
+
+/**
+ * The label for visits that arrived without a referrer. A blank row in the
+ * referrers table would look like a bug.
+ */
+export const DIRECT_REFERRER = "(direct)";
 
 export const DEMO_CAPABILITIES: ProviderCapabilities = {
 	batchPaths: "filter",

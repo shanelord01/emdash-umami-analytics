@@ -21,10 +21,9 @@ import type { ProviderId } from "./providers/types.js";
 
 export interface AnalyticsSettings {
 	provider: ProviderId;
-	/** The provider's credential: a Cloudflare API token, an Umami API key. */
+	/** The provider's credential: the Umami API key. */
 	apiToken: string;
-	accountId: string;
-	/** The site's id at the provider: a Cloudflare site tag, an Umami website ID. */
+	/** The site's id at the provider: the Umami website ID. */
 	siteTag: string;
 	/** Where a self-hosted Umami serves its API. Empty means Umami Cloud. */
 	umamiApiUrl: string;
@@ -37,8 +36,16 @@ export interface AnalyticsSettings {
 export const DEFAULT_SYNC_INTERVAL = "*/15 * * * *";
 export const RECONCILE_SCHEDULE = "10 3 * * *";
 
-/** Cloudflare answers for 184 days; asking for more is a guaranteed gap. */
-const MAX_RETENTION_DAYS = 184;
+/**
+ * The longest history the settings offer: a year and a month.
+ *
+ * Umami sets no limit of its own, since it is exact at any age. The
+ * limits are this plugin's. The history pass reads one day per step, so
+ * 400 days take about eleven days to arrive at the default interval. The
+ * daily prune deletes at most 392 `daily` rows per run, which keeps up
+ * with a store that gains fewer paths than that per day.
+ */
+export const MAX_RETENTION_DAYS = 400;
 
 /**
  * The most paths one paths tick may ask about, and the default. The tick
@@ -56,11 +63,9 @@ export async function readSettings(ctx: PluginContext): Promise<SettingsResult> 
 	const raw = new Map<string, unknown>();
 	for (const entry of await ctx.settings.list()) raw.set(entry.key, entry.value);
 
-	const provider = providerOf(raw.get("provider"));
-	const umami = provider === "umami";
-	const apiToken = str(raw.get(umami ? "umamiApiKey" : "cfApiToken"));
-	const accountId = str(raw.get("cfAccountId"));
-	const siteTag = str(raw.get(umami ? "umamiWebsiteId" : "cfSiteTag"));
+	const provider: ProviderId = raw.get("provider") === "demo" ? "demo" : "umami";
+	const apiToken = str(raw.get("umamiApiKey"));
+	const siteTag = str(raw.get("umamiWebsiteId"));
 	const umamiApiUrl = str(raw.get("umamiApiUrl"));
 
 	const hosts = parseHosts(raw.get("hosts"), ctx.site.url);
@@ -68,22 +73,13 @@ export async function readSettings(ctx: PluginContext): Promise<SettingsResult> 
 	const retentionDays = clampNumber(raw.get("retentionDays"), 7, MAX_RETENTION_DAYS, 90);
 	const chunkSize = clampNumber(raw.get("chunkSize"), 10, MAX_CHUNK_SIZE, MAX_CHUNK_SIZE);
 
-	const partial = { provider, apiToken, accountId, siteTag, umamiApiUrl, hosts, syncInterval, retentionDays, chunkSize };
+	const partial = { provider, apiToken, siteTag, umamiApiUrl, hosts, syncInterval, retentionDays, chunkSize };
 	if (provider === "demo") return { ok: true, settings: partial };
 
-	// Umami needs a key and nothing else: the website ID is optional in the
-	// same way as the site tag below.
-	if (umami) {
-		return apiToken ? { ok: true, settings: partial } : { ok: false, missing: ["umamiApiKey"], partial };
-	}
-
-	// The site tag is deliberately not required: the settings form says it
-	// can be left empty, and the sync then lists the sites that have
-	// traffic. A token and an account are the irreducible minimum.
-	const missing: string[] = [];
-	if (!apiToken) missing.push("cfApiToken");
-	if (!accountId) missing.push("cfAccountId");
-	if (missing.length > 0) return { ok: false, missing, partial };
+	// The website ID is deliberately not required: the settings form says it
+	// can be left empty, and the sync then lists the websites the key can
+	// see. A key is the irreducible minimum.
+	if (!apiToken) return { ok: false, missing: ["umamiApiKey"], partial };
 
 	return { ok: true, settings: partial };
 }
@@ -91,21 +87,17 @@ export async function readSettings(ctx: PluginContext): Promise<SettingsResult> 
 /**
  * Which hostnames count as this site.
  *
- * Empty means "derive from the site URL", because one Cloudflare site tag
- * routinely covers more than the canonical host — a tag for `example.com`
- * typically also matches `www.example.com` and a `pages.dev` preview domain, and
- * counting preview deploys as production traffic is exactly the sort of
- * quiet wrongness that makes people distrust the numbers.
+ * Empty means "derive from the site URL", because one Umami website
+ * records whatever hostname its tracker ran on: the canonical host, its
+ * `www` form and any preview deploy that carries the same script. Counting
+ * preview deploys as production traffic is the sort of quiet wrongness
+ * that makes people distrust the numbers.
  */
 function parseHosts(raw: unknown, siteUrl: string): string[] {
 	if (typeof raw === "string" && raw.trim()) {
 		return [...new Set(raw.split(",").map((h) => h.trim().toLowerCase()).filter(Boolean))];
 	}
 	return siteHosts(siteUrl);
-}
-
-function providerOf(value: unknown): ProviderId {
-	return value === "demo" || value === "umami" ? value : "cloudflare";
 }
 
 function str(value: unknown): string {
@@ -120,8 +112,6 @@ function str(value: unknown): string {
  */
 export function missingSettingsMessage(missing: string[]): string {
 	const labels: Record<string, string> = {
-		cfApiToken: "an API token with Account → Account Analytics → Read",
-		cfAccountId: "the Cloudflare account ID",
 		umamiApiKey: "an Umami API key",
 	};
 	const parts = missing.map((key) => labels[key] ?? key);

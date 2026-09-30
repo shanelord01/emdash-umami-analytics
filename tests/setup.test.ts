@@ -15,12 +15,12 @@ const minutesAgo = (n: number) => new Date(NOW.getTime() - n * 60_000).toISOStri
 
 function healthy(): SetupFacts {
 	return {
-		provider: "cloudflare",
+		provider: "umami",
 		missing: [],
-		siteTag: "tag-1",
+		siteTag: "site-1",
 		hosts: ["example.test", "www.example.test"],
 		siteUrl: "https://example.test",
-		discovery: { ok: true, value: [{ siteTag: "tag-1", hosts: ["example.test"], pageviews: 120 }] },
+		discovery: { ok: true, value: [{ siteTag: "site-1", hosts: ["example.test"], pageviews: 120 }] },
 		tasks: [{ name: "sync", schedule: "*/15 * * * *", nextRunAt: minutesAgo(-10), lastRunAt: minutesAgo(5) }],
 		state: { phase: "overview", lastSync: minutesAgo(5), indexComplete: true, indexed: 14 },
 		now: NOW,
@@ -52,70 +52,85 @@ describe("a complete setup", () => {
 		const facts = healthy();
 		facts.discovery = {
 			ok: true,
-			value: [{ siteTag: "tag-1", hosts: ["example.test", "tag-1-preview.workers.dev"], pageviews: 120 }],
+			value: [{ siteTag: "site-1", hosts: ["example.test", "site-1-preview.workers.dev"], pageviews: 120 }],
 		};
 		expect(check(facts, "hosts")).toMatchObject({
 			status: "ok",
-			detail: "Counted: example.test. Not counted: tag-1-preview.workers.dev.",
+			detail: "Counted: example.test. Not counted: site-1-preview.workers.dev.",
 		});
 	});
 });
 
 describe("each failure, with the sentence that names its fix", () => {
-	it("a missing token also explains the encryption key", () => {
-		const facts = { ...healthy(), missing: ["cfApiToken"], discovery: null };
-		expect(check(facts, "credentials").detail).toMatch(/add an API token with Account → Account Analytics → Read/);
+	it("a missing key asks for the key and explains the encryption key", () => {
+		const facts = { ...healthy(), missing: ["umamiApiKey"], discovery: null };
+		expect(check(facts, "credentials").detail).toMatch(/add an Umami API key in the plugin's settings/);
+		expect(check(facts, "credentials").detail).toMatch(/If saving the API key fails/);
 		expect(check(facts, "credentials").detail).toMatch(/npx emdash secrets generate/);
+		expect(check(facts, "credentials", "de").detail).toMatch(/einen Umami-API-Schlüssel/);
+		expect(check(facts, "access")).toMatchObject({ status: "skipped", detail: "Needs the API key." });
 		expect(check(facts, "siteTag").status).toBe("skipped");
 	});
 
-	it("a token Cloudflare refuses", () => {
-		const facts = { ...healthy(), discovery: failure("cfForbidden") };
+	it("a key Umami refuses", () => {
+		const facts = { ...healthy(), discovery: failure("umamiBadKey") };
 		expect(check(facts, "access")).toMatchObject({
 			status: "problem",
-			detail: expect.stringMatching(/rejected the token \(403\)/),
+			detail: expect.stringMatching(/rejected the API key \(401\)/),
 		});
 		expect(check(facts, "hosts").status).toBe("skipped");
 	});
 
-	it("a Zone-scoped token", () => {
-		const facts = { ...healthy(), discovery: failure("cfZoneToken") };
-		expect(check(facts, "access").detail).toMatch(/Zone Analytics Read/);
+	it("each other refusal reads as one sentence, in the reader's language", () => {
+		const access = (key: Parameters<typeof failure>[0], locale = "en") =>
+			check({ ...healthy(), discovery: failure(key, { status: 200, detail: "timed out" }) }, "access", locale).detail;
+		expect(access("umamiProxy")).toMatch(/answered with a web page instead of JSON \(HTTP 200\)/);
+		expect(access("umamiRateLimited")).toMatch(/rate-limited the request \(429\)/);
+		expect(access("umamiUnreachable")).toBe("Umami could not be reached: timed out");
+		expect(access("umamiProxy", "de")).toMatch(/mit einer Webseite statt mit JSON geantwortet/);
+		expect(access("umamiNoWebsite", "de")).toMatch(/keine Website mit dieser ID/);
 	});
 
-	it("no site tag, with the account's sites to copy one from", () => {
-		const facts = { ...healthy(), siteTag: "" };
+	it("no website ID, with the websites to copy one from", () => {
+		const facts: SetupFacts = {
+			...healthy(),
+			siteTag: "",
+			discovery: { ok: true, value: [{ siteTag: "site-1", name: "Blog", hosts: ["example.test"] }] },
+		};
 		expect(check(facts, "siteTag")).toMatchObject({
 			status: "problem",
 			detail: expect.stringMatching(/Copy one from the list below/),
 		});
 		const text = JSON.stringify(renderSetup(facts, 30, "en"));
-		expect(text).toMatch(/Sites on this account/);
-		expect(text).toMatch(/tag-1/);
+		expect(text).toMatch(/Websites this API key can list/);
+		expect(text).toMatch(/site-1/);
+		expect(text).toMatch(/Blog/);
 	});
 
-	it("no site tag on an account without any traffic", () => {
+	it("no website ID and nothing to list says where the ID is", () => {
 		const facts = { ...healthy(), siteTag: "", discovery: { ok: true as const, value: [] } };
-		expect(check(facts, "siteTag").detail).toMatch(/no Web Analytics traffic in the last 7 days/);
+		expect(check(facts, "siteTag").detail).toMatch(/Copy the ID from the website's settings in Umami/);
 	});
 
-	it("a site tag with no traffic, which is what the beacon token looks like", () => {
-		const facts = { ...healthy(), siteTag: "beacon-token" };
+	it("a website without traffic, which is what a missing tracking script looks like", () => {
+		const facts = { ...healthy(), discovery: { ok: true as const, value: [] } };
 		expect(check(facts, "siteTag")).toMatchObject({
 			status: "problem",
-			detail: expect.stringMatching(/token in the beacon snippet is a different value/),
+			detail: "Umami reported no page views for this website in the last 7 days. Check that the tracking script is on the site.",
 		});
-		expect(JSON.stringify(renderSetup(facts, 30, "en"))).toMatch(/Sites on this account/);
+		expect(check(facts, "hosts")).toMatchObject({ status: "skipped", detail: "Needs a website ID with traffic." });
 	});
 
-	it("a hostname filter that excludes every host Cloudflare reports", () => {
+	it("a hostname filter that excludes every host Umami reports", () => {
 		const facts = healthy();
-		facts.discovery = { ok: true, value: [{ siteTag: "tag-1", hosts: ["www.other.test"], pageviews: 120 }] };
+		facts.discovery = { ok: true, value: [{ siteTag: "site-1", hosts: ["www.other.test"], pageviews: 120 }] };
 		expect(check(facts, "hosts")).toMatchObject({
 			status: "problem",
 			detail:
-				"Cloudflare reports this site tag under www.other.test, but the plugin counts only example.test, www.example.test. Change Hostnames to count in the plugin's settings.",
+				"Umami reports this website under www.other.test, but the plugin counts only example.test, www.example.test. Change Hostnames to count in the plugin's settings.",
 		});
+		// The hostnames it does report are listed, to copy from.
+		expect(JSON.stringify(renderSetup(facts, 30, "en"))).toMatch(/Websites this API key can list/);
 	});
 
 	it("no stored site URL, which leaves the index nothing to match", () => {
@@ -186,12 +201,12 @@ describe("each failure, with the sentence that names its fix", () => {
 		const facts = healthy();
 		facts.state = {
 			...facts.state,
-			lastError: "Cloudflare rejected the token (403). It needs Account → Account Analytics → Read.",
-			lastProblem: { key: "cfForbidden" },
+			lastError: "Umami rate-limited the request (429). The next sync tries again.",
+			lastProblem: { key: "umamiRateLimited" },
 			lastErrorAt: minutesAgo(3),
 		};
-		expect(check(facts, "lastSync").detail).toMatch(/^Last attempt failed 3 minutes ago: Cloudflare rejected/);
-		expect(check(facts, "lastSync", "de").detail).toMatch(/Cloudflare hat das Token abgelehnt/);
+		expect(check(facts, "lastSync").detail).toMatch(/^Last attempt failed 3 minutes ago: Umami rate-limited/);
+		expect(check(facts, "lastSync", "de").detail).toMatch(/Umami hat die Anfrage gedrosselt/);
 	});
 
 	it("counts problems in the banner", () => {
@@ -213,62 +228,23 @@ describe("before anything is known", () => {
 		expect(check(facts, "index").status).toBe("waiting");
 	});
 
-	it("checks nothing on Cloudflare while demo data is on", () => {
+	it("checks nothing on Umami while demo data is on", () => {
 		const facts = { ...healthy(), provider: "demo" as const, discovery: null };
 		expect(checkSetup(facts, "en").map((c) => c.id)).not.toContain("access");
 		expect(check(facts, "source").detail).toMatch(/Demo data/);
 	});
 });
 
-describe("with Umami as the data source", () => {
-	function umami(): SetupFacts {
-		return { ...healthy(), provider: "umami", siteTag: "site-1", discovery: { ok: true, value: [{ siteTag: "site-1", hosts: ["example.test"], pageviews: 120 }] } };
-	}
-
-	it("runs the same checks under Umami's names, in both languages", () => {
+describe("the check's own words", () => {
+	it("names its rows in the reader's language", () => {
 		const labels = (locale: string) => {
-			const table = renderSetup(umami(), 30, locale).find((b) => b.block_id === "analytics:setup:checks") as unknown as {
+			const table = renderSetup(healthy(), 30, locale).find((b) => b.block_id === "analytics:setup:checks") as unknown as {
 				rows: Array<{ check: string }>;
 			};
 			return table.rows.slice(0, 5).map((row) => row.check);
 		};
-		expect(problems(umami())).toEqual([]);
 		expect(labels("en")).toEqual(["Data source", "API key", "Umami access", "Website ID", "Hostnames"]);
 		expect(labels("de")).toEqual(["Datenquelle", "API-Schlüssel", "Zugriff auf Umami", "Website-ID", "Hostnamen"]);
-		expect(JSON.stringify(renderSetup(umami(), 30, "en"))).not.toMatch(/Cloudflare|site tag/i);
-	});
-
-	it("a missing key asks for the key and explains the encryption key", () => {
-		const facts = { ...umami(), missing: ["umamiApiKey"], discovery: null };
-		expect(check(facts, "credentials").detail).toMatch(/add an Umami API key in the plugin's settings/);
-		expect(check(facts, "credentials").detail).toMatch(/If saving the API key fails/);
-		expect(check(facts, "credentials", "de").detail).toMatch(/einen Umami-API-Schlüssel/);
-		expect(check(facts, "access")).toMatchObject({ status: "skipped", detail: "Needs the API key." });
-	});
-
-	it("a website without traffic says to check the tracking script, not the beacon token", () => {
-		const facts = { ...umami(), discovery: { ok: true as const, value: [] } };
-		expect(check(facts, "siteTag")).toMatchObject({
-			status: "problem",
-			detail: "Umami reported no page views for this website in the last 7 days. Check that the tracking script is on the site.",
-		});
-		expect(check(facts, "hosts")).toMatchObject({ status: "skipped", detail: "Needs a website ID with traffic." });
-	});
-
-	it("no website ID and nothing to list says where the ID is", () => {
-		const facts = { ...umami(), siteTag: "", discovery: { ok: true as const, value: [] } };
-		expect(check(facts, "siteTag").detail).toMatch(/Copy the ID from the website's settings in Umami/);
-	});
-
-	it("each refusal reads as one sentence, in the reader's language", () => {
-		const access = (key: Parameters<typeof failure>[0], locale = "en") =>
-			check({ ...umami(), discovery: failure(key, { status: 200, detail: "timed out" }) }, "access", locale).detail;
-		expect(access("umamiBadKey")).toMatch(/rejected the API key \(401\)/);
-		expect(access("umamiProxy")).toMatch(/answered with a web page instead of JSON \(HTTP 200\)/);
-		expect(access("umamiRateLimited")).toMatch(/rate-limited the request \(429\)/);
-		expect(access("umamiUnreachable")).toBe("Umami could not be reached: timed out");
-		expect(access("umamiProxy", "de")).toMatch(/mit einer Webseite statt mit JSON geantwortet/);
-		expect(access("umamiNoWebsite", "de")).toMatch(/keine Website mit dieser ID/);
 	});
 });
 

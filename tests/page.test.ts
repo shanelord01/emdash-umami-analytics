@@ -49,7 +49,7 @@ function input(over: Partial<PageInput> = {}): PageInput {
 	return {
 		state: {
 			phase: "overview",
-			provider: "cloudflare",
+			provider: "umami",
 			lastSync: "2026-09-23T11:55:00.000Z",
 			referrers: [{ label: "(direct)", visits: 40 }],
 			countries: [{ label: "DE", visits: 30 }],
@@ -69,7 +69,7 @@ function input(over: Partial<PageInput> = {}): PageInput {
 			["/", entry("/", "Home", "home")],
 			["/blog/hello/", entry("/blog/hello/", "Hello")],
 		]),
-		dashboardUrl: "https://dash.cloudflare.com/acct/web-analytics/overview?siteTag~in=tag",
+		dashboardUrl: "https://cloud.umami.is/websites/site-1",
 		now: NOW,
 		locale: "en",
 		...over,
@@ -132,7 +132,7 @@ describe("renderPage", () => {
 		expect(chartPoints(renderPage(input({ range: 7 })))).toEqual([7, 7]);
 	});
 
-	it("leaves a day Cloudflare never reported out of the chart rather than drawing a zero", () => {
+	it("leaves a day the provider never reported out of the chart rather than drawing a zero", () => {
 		const rollups = history(60).filter((r) => r.date !== addDays(TODAY, -3));
 		expect(chartPoints(renderPage(input({ range: 7, rollups })))).toEqual([6, 6]);
 	});
@@ -173,9 +173,10 @@ describe("renderPage", () => {
 	});
 
 	it("links to the provider's own dashboard when there is one, and not otherwise", () => {
-		const url = "https://dash.cloudflare.com/acct/web-analytics/overview?siteTag~in=tag";
+		const url = "https://cloud.umami.is/websites/site-1";
 		const links = find(renderPage(input()), "link") as unknown as Array<{ target: { kind: string; url?: string } }>;
 		expect(links.some((l) => l.target.kind === "external" && l.target.url === url)).toBe(true);
+		expect(JSON.stringify(renderPage(input()))).toContain("Open in Umami");
 
 		const demo = find(renderPage(input({ dashboardUrl: null })), "link");
 		expect(demo.some((l) => (l.target as { kind: string }).kind === "external")).toBe(false);
@@ -210,13 +211,18 @@ describe("renderPage", () => {
 		expect(find(blocks, "chart")).toHaveLength(0);
 	});
 
-	it("never calls demo data estimated by Cloudflare", () => {
+	it("marks demo data as demo data, and its sampled days as estimated", () => {
+		const sampled = history(60).map((row) => (row.date === TODAY ? { ...row, sampleInterval: 2 } : row));
 		const blocks = renderPage(
-			input({ state: { ...input().state, provider: "demo", estimated: true }, dashboardUrl: null }),
+			input({ state: { ...input().state, provider: "demo", estimated: true }, rollups: sampled, dashboardUrl: null }),
 		);
 		const text = JSON.stringify(blocks);
 		expect(text).toMatch(/Demo data/);
-		expect(text).not.toMatch(/Cloudflare/);
+		expect(text).toMatch(/estimated \(sampled\)/);
+	});
+
+	it("marks nothing as estimated when every day was counted exactly", () => {
+		expect(JSON.stringify(renderPage(input()))).not.toMatch(/estimated/);
 	});
 });
 

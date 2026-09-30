@@ -28,7 +28,7 @@ function page(locale: string | undefined) {
 	const input: PageInput = {
 		state: {
 			phase: "overview",
-			provider: "cloudflare",
+			provider: "umami",
 			lastSync: NOW.toISOString(),
 			countries: [{ label: "DE", visits: 3 }],
 			snapshotSince: "2026-09-18",
@@ -37,7 +37,7 @@ function page(locale: string | undefined) {
 		rollups: days(14, 1234),
 		topEntries: { rows: [], partial: false },
 		entriesByPath: new Map(),
-		dashboardUrl: "https://dash.cloudflare.com/acct/web-analytics/overview?siteTag~in=tag",
+		dashboardUrl: "https://cloud.umami.is/websites/site-1",
 		now: NOW,
 		locale,
 	};
@@ -80,22 +80,22 @@ describe("the widget and the page in German", () => {
 		const state: SyncState = {
 			phase: "overview",
 			lastSync: NOW.toISOString(),
-			lastError: "Cloudflare rejected the token (403). It needs Account → Account Analytics → Read.",
-			lastProblem: { key: "cfForbidden" },
+			lastError: "Umami returned HTTP 502",
+			lastProblem: { key: "umamiHttp", params: { status: 502 } },
 			lastErrorAt: NOW.toISOString(),
 		};
-		expect(widget("de", state)).toContain("Cloudflare hat das Token abgelehnt (403)");
-		expect(widget("en", state)).toContain("Cloudflare rejected the token (403)");
+		expect(widget("de", state)).toContain("Umami hat HTTP 502 zurückgegeben");
+		expect(widget("en", state)).toContain("Umami returned HTTP 502");
 	});
 
 	it("shows an unrecognized failure verbatim in every language", () => {
 		const state: SyncState = {
 			phase: "overview",
 			lastSync: NOW.toISOString(),
-			lastError: "GraphQL: something new",
+			lastError: "Inverted range: something new",
 			lastErrorAt: NOW.toISOString(),
 		};
-		expect(widget("de", state)).toContain("GraphQL: something new");
+		expect(widget("de", state)).toContain("Inverted range: something new");
 	});
 
 	it("names ranges, countries and dates in German on the page", () => {
@@ -103,7 +103,7 @@ describe("the widget and the page in German", () => {
 		expect(de).toContain("7 Tage");
 		expect(de).toContain("Meistbesuchte Einträge");
 		expect(de).toContain("Deutschland");
-		expect(de).toContain("In Cloudflare öffnen");
+		expect(de).toContain("In Umami öffnen");
 		expect(de).toContain("18.09.2026");
 	});
 });

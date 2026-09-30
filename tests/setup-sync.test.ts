@@ -2,14 +2,15 @@ import { validateBlockResponse } from "@emdash-cms/blocks/server";
 import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash-cms/plugin-test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { GRAPHQL_ENDPOINT, RUM_DATASET } from "../src/providers/cloudflare.js";
 import { WAITING_KEY } from "../src/sync/scheduler.js";
 import { SETUP_ACTION } from "../src/ui/page.js";
-import { graphql, newHost, NOW } from "./host.js";
+import { newHost, NOW } from "./host.js";
 
 /**
  * The setup check through the real sandbox, bridge and route, reproducing
- * each failure from the state a real site would be in.
+ * each failure from the state a real site would be in. The failures that
+ * need an answer from Umami are in `umami-sync.test.ts`, beside the
+ * fixtures that fake one.
  */
 
 let host: PluginRuntimeTestHost | undefined;
@@ -34,52 +35,11 @@ function row(rows: Row[], check: string): Row | undefined {
 	return rows.find((r) => r.check === check);
 }
 
-function discovery(rows: Array<{ siteTag: string; host: string; count: number }>) {
-	return graphql({
-		[RUM_DATASET]: rows.map((r) => ({ count: r.count, dimensions: { siteTag: r.siteTag, requestHost: r.host } })),
-	});
-}
-
 describe("the setup check", () => {
 	it("is one button away on the analytics page, also before any data", async () => {
 		host = await newHost();
 		const page = await host.admin.loadPage("/analytics");
 		expect(JSON.stringify(page.blocks)).toMatch(/"action_id":"analytics:setup"/);
-	});
-
-	it("finds a hostname filter that excludes the host Cloudflare reports", async () => {
-		// The site URL is example.test, so the plugin counts example.test and
-		// www.example.test; the beacon reports under another name, and every
-		// number would read zero without an error anywhere.
-		host = await newHost("cloudflare");
-		await host.http.respond(GRAPHQL_ENDPOINT, discovery([{ siteTag: "tag-1", host: "www.other.test", count: 42 }]));
-
-		const { rows, text } = await openSetup(host);
-		expect(row(rows, "Hostnames")).toMatchObject({
-			status: "Problem",
-			detail: expect.stringMatching(
-				/reports this site tag under www\.other\.test, but the plugin counts only example\.test/,
-			),
-		});
-		expect(row(rows, "Site tag")).toMatchObject({ status: "OK" });
-		expect(text).toMatch(/Sites on this account/);
-	});
-
-	it("finds a site tag that has no traffic and lists the tags that do", async () => {
-		host = await newHost("cloudflare");
-		await host.http.respond(GRAPHQL_ENDPOINT, discovery([{ siteTag: "real-tag", host: "example.test", count: 42 }]));
-
-		const { rows, text } = await openSetup(host);
-		expect(row(rows, "Site tag")).toMatchObject({ status: "Problem" });
-		expect(text).toMatch(/real-tag/);
-	});
-
-	it("reports Cloudflare's refusal as the access problem", async () => {
-		host = await newHost("cloudflare");
-		await host.http.respond(GRAPHQL_ENDPOINT, new Response("forbidden", { status: 403 }));
-
-		const { rows } = await openSetup(host);
-		expect(row(rows, "Cloudflare access")).toMatchObject({ status: "Problem", detail: expect.stringMatching(/403/) });
 	});
 
 	it("finds a site without a stored URL", async () => {

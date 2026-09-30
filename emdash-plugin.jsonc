@@ -52,12 +52,12 @@
 	// `network:request:unrestricted`, with `allowedHosts` empty as that
 	// capability requires, because a self-hosted Umami lives on a host the
 	// operator types into the settings, which no allow-list written here
-	// can name. The plugin requests two places only: `api.cloudflare.com`,
-	// and the Umami API URL from the settings (`api.umami.is` unless changed).
+	// can name. The plugin requests one place only: the Umami API URL from
+	// the settings (`api.umami.is` unless changed).
 	//
 	// Deliberately absent: `content:write` (this plugin reports, it never
 	// edits), `users:read`, `email:send`. Nothing about your content leaves
-	// the site — the outbound request carries path strings and a site tag.
+	// the site: the outbound request carries a website ID and hostnames.
 	"capabilities": ["content:read", "schema:read", "network:request:unrestricted"],
 	"allowedHosts": [],
 
@@ -65,8 +65,8 @@
 		// The fact table: one row per (day, path).
 		//
 		// Rows freeze once their day is closed and was read from an
-		// unsampled response, because after seven days Cloudflare can no
-		// longer reproduce them — see src/sync/window.ts.
+		// unsampled response (see src/sync/window.ts). The history pass may
+		// still correct one, because Umami is exact at any age.
 		"daily": { "indexes": ["date", "path"] },
 
 		// Site totals per day, read straight into the widget's chart.
@@ -96,28 +96,12 @@
 			"provider": {
 				"type": "select",
 				"label": "Data source",
-				"default": "cloudflare",
+				"default": "umami",
 				"options": [
-					{ "value": "cloudflare", "label": "Cloudflare Web Analytics" },
 					{ "value": "umami", "label": "Umami (Cloud or self-hosted)" },
 					{ "value": "demo", "label": "Demo data (generated, not real traffic)" }
 				],
 				"description": "Demo data needs no account and fills the dashboard with generated numbers. Switching the data source clears the stored numbers."
-			},
-			"cfApiToken": {
-				"type": "secret",
-				"label": "Cloudflare API token",
-				"description": "Permission: Account → Account Analytics → Read. A Zone-level Analytics token authenticates but cannot read this dataset."
-			},
-			"cfAccountId": {
-				"type": "string",
-				"label": "Cloudflare account ID",
-				"description": "Found under Manage Account → Account Home in the Cloudflare dashboard."
-			},
-			"cfSiteTag": {
-				"type": "string",
-				"label": "Web Analytics site tag",
-				"description": "The site tag, not the beacon token: they are different values. In the Cloudflare dashboard it is the ID at the end of the site's Manage site link (web-analytics/edit/<site tag>). Leave empty and the widget lists the sites on the account that have traffic."
 			},
 			"umamiApiKey": {
 				"type": "secret",
@@ -138,7 +122,7 @@
 			"hosts": {
 				"type": "string",
 				"label": "Hostnames to count",
-				"description": "Comma-separated. Leave empty to use the site URL and its www form. One site tag often also covers preview domains, which should not be counted."
+				"description": "Comma-separated. Leave empty to use the site URL and its www form. Any other hostname the website reports, a preview domain for one, is not counted."
 			},
 			"syncInterval": {
 				"type": "select",
@@ -154,10 +138,10 @@
 			"retentionDays": {
 				"type": "number",
 				"label": "Keep daily rows for",
-				"description": "Days. Cloudflare itself answers for 184 days; beyond that this store is the only copy.",
+				"description": "Days. The first syncs read this many days back from Umami, newest first, and older rows are deleted.",
 				"default": 90,
 				"min": 7,
-				"max": 184
+				"max": 400
 			},
 			"chunkSize": {
 				"type": "number",

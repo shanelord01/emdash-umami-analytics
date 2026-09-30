@@ -65,7 +65,7 @@ describe("renderWidget produces valid Block Kit", () => {
 					state: {
 						phase: "overview",
 						lastSync: "2026-09-20T11:00:00.000Z",
-						lastError: "Cloudflare rejected the token (403).",
+						lastError: "Umami rejected the API key (401).",
 						lastErrorAt: "2026-09-20T11:50:00.000Z",
 						topPaths: [{ path: "/", pageviews: 25, visits: 20 }],
 					},

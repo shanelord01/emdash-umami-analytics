@@ -31,7 +31,6 @@ const en = {
 	nothingRecorded: "Nothing recorded yet.",
 	refresh: "Refresh",
 	openAnalytics: "Open analytics",
-	openInCloudflare: "Open in Cloudflare",
 	openInUmami: "Open in Umami",
 	rangeDays: { one: "{count} day", other: "{count} days" },
 	topEntries: "Top entries",
@@ -95,34 +94,16 @@ const en = {
 	statusWaiting: "Waiting",
 	statusSkipped: "Not checked",
 	checkSource: "Data source",
-	checkCredentials: "API token and account",
-	checkAccess: "Cloudflare access",
-	checkSiteTag: "Site tag",
 	checkHosts: "Hostnames",
 	checkSiteUrl: "Site URL",
 	checkIndex: "Content index",
 	checkScheduler: "Scheduled sync",
 	checkLastSync: "Last sync",
-	sourceCloudflare: "Cloudflare Web Analytics.",
-	sourceDemo: "Demo data: generated numbers. Nothing on Cloudflare is checked.",
+	sourceDemo: "Demo data: generated numbers. Nothing on Umami is checked.",
 	credentialsSaved: "Saved.",
-	encryptionKeyHint:
-		"If saving the token fails with an encryption error, the site needs EMDASH_ENCRYPTION_KEY: generate a value with npx emdash secrets generate and store it as a secret (on Cloudflare: wrangler secret put EMDASH_ENCRYPTION_KEY).",
-	needsCredentials: "Needs the API token and the account ID.",
-	accessOk: "The token can read this account's Web Analytics.",
-	needsAccess: "Needs working Cloudflare access.",
-	siteTagMissing: "No site tag set. Copy one from the list below into Web Analytics site tag in the plugin's settings.",
 	siteTagFound: "{tag}: {count} page views in the last {days} days.",
-	siteTagNotFound:
-		"No traffic under this site tag in the last {days} days. The sites with traffic are listed below. The token in the beacon snippet is a different value from the site tag.",
-	accountNoTraffic:
-		"This account reported no Web Analytics traffic in the last {days} days. Check that the beacon is on the site.",
-	needsSiteTag: "Needs a site tag with traffic.",
-	hostsEvery: "No hostname filter: counting every hostname this site tag reports ({hosts}).",
 	hostsCounted: "Counted: {hosts}.",
 	hostsPartly: "Counted: {counted}. Not counted: {excluded}.",
-	hostsNone:
-		"Cloudflare reports this site tag under {reported}, but the plugin counts only {counted}. Change Hostnames to count in the plugin's settings.",
 	siteUrlMissing:
 		"EmDash has no site URL, so entries have no public address and page views cannot be matched to them. EmDash stores it (the emdash:site_url option) when the setup wizard runs on the live domain; a server that was already running picks it up after a restart.",
 	needsSiteUrl: "Needs the site URL.",
@@ -137,11 +118,7 @@ const en = {
 		"On Cloudflare Workers, EmDash runs scheduled tasks from a Cron Trigger and the scheduled handler in src/worker.ts. npx emdash doctor checks that both are configured.",
 	minutes: { one: "{count} minute", other: "{count} minutes" },
 	hours: { one: "{count} hour", other: "{count} hours" },
-	sitesTitle: "Sites on this account",
-	colSiteTag: "Site tag",
 	colHostnames: "Hostnames",
-	sitesNote:
-		"Sites with page views in the last {days} days. In the Cloudflare dashboard, the site tag is also the ID at the end of the site's Manage site link.",
 
 	checkCredentialsUmami: "API key",
 	checkAccessUmami: "Umami access",
@@ -170,15 +147,12 @@ const en = {
 	demoData: "Demo data, not real traffic",
 	synced: "Synced {age}",
 	notSynced: "Not synced yet",
-	estimatedCloudflare: "estimated (Cloudflare sampled this range)",
 	estimatedSampled: "estimated (sampled)",
 	todayCounting: "today is still counting",
 	nothingMatched: "no page is matched to an entry yet; Check setup on the Analytics page says why",
 	lastAttemptFailed: "Last attempt failed: {error}",
 	lastAttemptFailedAge: "Last attempt failed {age}: {error}",
 	firstSyncPending: "The first sync has not run yet. It is scheduled now; numbers appear after it completes.",
-	syncedNoViews:
-		"Synced {age}, but Cloudflare reported no page views for this site tag. Check that the beacon is on the site.",
 	syncedNoViewsUmami:
 		"Synced {age}, but Umami reported no page views for this website. Check that the tracking script is on the site.",
 	recently: "recently",
@@ -194,13 +168,8 @@ const en = {
 	syncUnschedulable: "This site runs no scheduled tasks, so a sync cannot be requested.",
 
 	notConfigured: "Analytics is not configured yet: add {parts} in the plugin's settings.",
-	partApiToken: "an API token with Account → Account Analytics → Read",
-	partAccountId: "the Cloudflare account ID",
 	partUmamiApiKey: "an Umami API key",
 	noNetwork: "Analytics cannot reach the network: the network:request capability is not granted.",
-	noSiteTagSites: "No site tag set. Sites with traffic on this account: {sites}.",
-	noSiteTagNoTraffic:
-		"No site tag set, and this account reported no Web Analytics traffic in the last 30 days. Check that the beacon is on the site.",
 	noWebsiteIdSites: "No website ID set. Websites this API key can list: {sites}.",
 	noWebsiteIdNoList:
 		"No website ID set, and Umami lists no website for this API key's user or their teams. Copy the ID from the website's settings in Umami into the plugin's settings.",
@@ -208,20 +177,6 @@ const en = {
 	summingFailed: "Summing the 30-day views failed: {detail}",
 	historyFailed: "Reading earlier days failed: {detail}",
 	storageUnavailable: "Storage collections are not available.",
-	cfNoAccount:
-		"Cloudflare returned no account. Check the Account ID, and that the token's permission is Account → Account Analytics → Read.",
-	cfForbidden: "Cloudflare rejected the token (403). It needs Account → Account Analytics → Read.",
-	cfRateLimited:
-		"Cloudflare rate-limited the request (429). The documented budget is 300 GraphQL queries per five minutes.",
-	cfHttp: "Cloudflare returned HTTP {status}",
-	cfZoneToken:
-		"Cloudflare refused the account (not authorized for that account). The token most likely carries Zone Analytics Read; this dataset is account-scoped and needs Account → Account Analytics → Read.",
-	cfUnreachable: "Cloudflare could not be reached: {detail}",
-	cfNotJson: "Cloudflare returned a response that is not JSON",
-	cfTruncated: "Cloudflare truncated the per-path response; reduce the chunk size.",
-	cfTooManyGroups:
-		"Too many groups for one request: {paths} paths x {days} days exceeds Cloudflare's {max}-group page size. Reduce the chunk size.",
-	cfNoRetention: "Cloudflare returned no retention settings for this dataset",
 	umamiBadKey:
 		"Umami rejected the API key (401). Create a key under Settings → API keys in Umami and save it in the plugin's settings.",
 	umamiUnauthorized:
@@ -257,7 +212,6 @@ const de: Record<MessageKey, Message> = {
 	nothingRecorded: "Noch nichts erfasst.",
 	refresh: "Aktualisieren",
 	openAnalytics: "Analytics öffnen",
-	openInCloudflare: "In Cloudflare öffnen",
 	openInUmami: "In Umami öffnen",
 	rangeDays: { one: "{count} Tag", other: "{count} Tage" },
 	topEntries: "Meistbesuchte Einträge",
@@ -326,35 +280,16 @@ const de: Record<MessageKey, Message> = {
 	statusWaiting: "Ausstehend",
 	statusSkipped: "Nicht geprüft",
 	checkSource: "Datenquelle",
-	checkCredentials: "API-Token und Konto",
-	checkAccess: "Zugriff auf Cloudflare",
-	checkSiteTag: "Site-Tag",
 	checkHosts: "Hostnamen",
 	checkSiteUrl: "Website-URL",
 	checkIndex: "Inhaltsindex",
 	checkScheduler: "Geplante Synchronisierung",
 	checkLastSync: "Letzte Synchronisierung",
-	sourceCloudflare: "Cloudflare Web Analytics.",
-	sourceDemo: "Demodaten: erzeugte Zahlen. Bei Cloudflare wird nichts geprüft.",
+	sourceDemo: "Demodaten: erzeugte Zahlen. Bei Umami wird nichts geprüft.",
 	credentialsSaved: "Gespeichert.",
-	encryptionKeyHint:
-		"Wenn das Speichern des Tokens mit einem Verschlüsselungsfehler scheitert, fehlt der Website EMDASH_ENCRYPTION_KEY: Erzeuge einen Wert mit npx emdash secrets generate und hinterlege ihn als Secret (bei Cloudflare: wrangler secret put EMDASH_ENCRYPTION_KEY).",
-	needsCredentials: "Braucht API-Token und Konto-ID.",
-	accessOk: "Das Token kann die Web Analytics dieses Kontos lesen.",
-	needsAccess: "Braucht funktionierenden Zugriff auf Cloudflare.",
-	siteTagMissing:
-		"Kein Site-Tag eingetragen. Übernimm einen aus der Liste unten in das Feld Web Analytics site tag in den Einstellungen des Plugins.",
 	siteTagFound: "{tag}: {count} Seitenaufrufe in den letzten {days} Tagen.",
-	siteTagNotFound:
-		"Unter diesem Site-Tag gab es in den letzten {days} Tagen keinen Traffic. Die Sites mit Traffic stehen unten. Das Token im Beacon-Snippet ist ein anderer Wert als das Site-Tag.",
-	accountNoTraffic:
-		"Dieses Konto hat in den letzten {days} Tagen keinen Web-Analytics-Traffic gemeldet. Prüfe, ob der Beacon auf der Website eingebunden ist.",
-	needsSiteTag: "Braucht ein Site-Tag mit Traffic.",
-	hostsEvery: "Kein Hostnamen-Filter: Gezählt wird jeder Hostname, den dieses Site-Tag meldet ({hosts}).",
 	hostsCounted: "Gezählt: {hosts}.",
 	hostsPartly: "Gezählt: {counted}. Nicht gezählt: {excluded}.",
-	hostsNone:
-		"Cloudflare meldet dieses Site-Tag unter {reported}, das Plugin zählt aber nur {counted}. Ändere Hostnames to count in den Einstellungen des Plugins.",
 	siteUrlMissing:
 		"EmDash hat keine Website-URL, deshalb haben Einträge keine öffentliche Adresse und Seitenaufrufe lassen sich ihnen nicht zuordnen. EmDash speichert sie (die Option emdash:site_url), wenn der Einrichtungsassistent auf der Live-Domain läuft; ein Server, der da schon lief, übernimmt sie nach einem Neustart.",
 	needsSiteUrl: "Braucht die Website-URL.",
@@ -374,11 +309,7 @@ const de: Record<MessageKey, Message> = {
 		"Auf Cloudflare Workers führt EmDash geplante Aufgaben über einen Cron Trigger und den scheduled-Handler in src/worker.ts aus. npx emdash doctor prüft, ob beides eingerichtet ist.",
 	minutes: { one: "{count} Minute", other: "{count} Minuten" },
 	hours: { one: "{count} Stunde", other: "{count} Stunden" },
-	sitesTitle: "Sites in diesem Konto",
-	colSiteTag: "Site-Tag",
 	colHostnames: "Hostnamen",
-	sitesNote:
-		"Sites mit Seitenaufrufen in den letzten {days} Tagen. Im Cloudflare-Dashboard ist das Site-Tag auch die ID am Ende des Links Manage site der Site.",
 
 	checkCredentialsUmami: "API-Schlüssel",
 	checkAccessUmami: "Zugriff auf Umami",
@@ -408,7 +339,6 @@ const de: Record<MessageKey, Message> = {
 	demoData: "Demodaten, keine echten Besuche",
 	synced: "Synchronisiert {age}",
 	notSynced: "Noch nicht synchronisiert",
-	estimatedCloudflare: "geschätzt (Cloudflare hat diesen Zeitraum per Stichprobe erfasst)",
 	estimatedSampled: "geschätzt (Stichprobe)",
 	todayCounting: "heute läuft die Zählung noch",
 	nothingMatched: "noch keine Seite einem Eintrag zugeordnet; „Einrichtung prüfen“ auf der Seite Analytics nennt den Grund",
@@ -416,8 +346,6 @@ const de: Record<MessageKey, Message> = {
 	lastAttemptFailedAge: "Letzter Versuch fehlgeschlagen {age}: {error}",
 	firstSyncPending:
 		"Die erste Synchronisierung ist noch nicht gelaufen. Sie ist eingeplant; die Zahlen erscheinen, sobald sie abgeschlossen ist.",
-	syncedNoViews:
-		"Synchronisiert {age}, aber Cloudflare meldet für dieses Site-Tag keine Seitenaufrufe. Prüfe, ob das Beacon auf der Webseite eingebunden ist.",
 	syncedNoViewsUmami:
 		"Synchronisiert {age}, aber Umami meldet für diese Website keine Seitenaufrufe. Prüfe, ob das Tracking-Skript auf der Webseite eingebunden ist.",
 	recently: "kürzlich",
@@ -434,13 +362,8 @@ const de: Record<MessageKey, Message> = {
 		"Diese Webseite führt keine geplanten Aufgaben aus, daher lässt sich keine Synchronisierung anfordern.",
 
 	notConfigured: "Analytics ist noch nicht eingerichtet: Trage {parts} in den Einstellungen des Plugins ein.",
-	partApiToken: "ein API-Token mit Account → Account Analytics → Read",
-	partAccountId: "die Cloudflare-Konto-ID",
 	partUmamiApiKey: "einen Umami-API-Schlüssel",
 	noNetwork: "Analytics kann das Netzwerk nicht erreichen: Die Berechtigung network:request ist nicht erteilt.",
-	noSiteTagSites: "Kein Site-Tag gesetzt. Webseiten mit Besuchen in diesem Konto: {sites}.",
-	noSiteTagNoTraffic:
-		"Kein Site-Tag gesetzt, und dieses Konto hat in den letzten 30 Tagen keine Web-Analytics-Besuche gemeldet. Prüfe, ob das Beacon auf der Webseite eingebunden ist.",
 	noWebsiteIdSites: "Keine Website-ID gesetzt. Websites, die dieser API-Schlüssel auflisten kann: {sites}.",
 	noWebsiteIdNoList:
 		"Keine Website-ID gesetzt, und Umami listet für den Benutzer dieses API-Schlüssels und seine Teams keine Website auf. Übernimm die ID aus den Einstellungen der Website in Umami in die Einstellungen des Plugins.",
@@ -448,20 +371,6 @@ const de: Record<MessageKey, Message> = {
 	summingFailed: "Das Summieren der Aufrufe über 30 Tage ist fehlgeschlagen: {detail}",
 	historyFailed: "Das Lesen früherer Tage ist fehlgeschlagen: {detail}",
 	storageUnavailable: "Die Speicher-Collections sind nicht verfügbar.",
-	cfNoAccount:
-		"Cloudflare hat kein Konto zurückgegeben. Prüfe die Konto-ID und dass das Token die Berechtigung Account → Account Analytics → Read hat.",
-	cfForbidden: "Cloudflare hat das Token abgelehnt (403). Es braucht Account → Account Analytics → Read.",
-	cfRateLimited:
-		"Cloudflare hat die Anfrage gedrosselt (429). Das dokumentierte Limit sind 300 GraphQL-Abfragen pro fünf Minuten.",
-	cfHttp: "Cloudflare hat HTTP {status} zurückgegeben",
-	cfZoneToken:
-		"Cloudflare hat das Konto abgelehnt (not authorized for that account). Das Token hat wahrscheinlich Zone Analytics Read; dieser Datensatz gilt fürs ganze Konto und braucht Account → Account Analytics → Read.",
-	cfUnreachable: "Cloudflare war nicht erreichbar: {detail}",
-	cfNotJson: "Cloudflare hat eine Antwort geliefert, die kein JSON ist",
-	cfTruncated: "Cloudflare hat die Antwort pro Pfad abgeschnitten; verringere die Anzahl der Pfade pro Durchlauf.",
-	cfTooManyGroups:
-		"Zu viele Gruppen für eine Anfrage: {paths} Pfade x {days} Tage übersteigen Cloudflares Seitengröße von {max} Gruppen. Verringere die Anzahl der Pfade pro Durchlauf.",
-	cfNoRetention: "Cloudflare hat für diesen Datensatz keine Aufbewahrungseinstellungen zurückgegeben",
 	umamiBadKey:
 		"Umami hat den API-Schlüssel abgelehnt (401). Erzeuge in Umami unter Settings → API keys einen Schlüssel und speichere ihn in den Einstellungen des Plugins.",
 	umamiUnauthorized:
@@ -509,8 +418,6 @@ export function t(lang: Lang, key: MessageKey, params: Params = {}): string {
 
 /** How a missing settings key reads inside the "not configured" sentence. */
 const MISSING_PARTS: Record<string, MessageKey> = {
-	cfApiToken: "partApiToken",
-	cfAccountId: "partAccountId",
 	umamiApiKey: "partUmamiApiKey",
 };
 
@@ -518,7 +425,7 @@ const MISSING_PARTS: Record<string, MessageKey> = {
 export function problemText(lang: Lang, problem: Problem): string {
 	if (problem.key === "notConfigured") {
 		const missing = String(problem.params?.missing ?? "").split(",").filter(Boolean);
-		const parts = missing.map((key) => t(lang, MISSING_PARTS[key] ?? "partAccountId"));
+		const parts = missing.map((key) => t(lang, MISSING_PARTS[key] ?? "partUmamiApiKey"));
 		return t(lang, "notConfigured", { parts: listOf(lang, parts) });
 	}
 	return t(lang, problem.key, problem.params);
