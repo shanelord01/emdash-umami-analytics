@@ -136,6 +136,51 @@ When you compare with Umami's own dashboard:
 - A day with 10,000 or more distinct paths is more than the plugin reads.
   It reports that and stores nothing for that day.
 
+## Views by event data
+
+Umami can store extra values with each page view, such as the category of
+the blog post being read. When your site sends them, the Analytics page
+shows how many page views carried each value, one table for each property
+named in the Views by event data setting. The default is `category`.
+
+Your site attaches the values with the Umami tracker's `data-before-send`
+hook. A page view is an `event` payload without a `name`:
+
+```html
+<script defer src="https://your-umami/script.js"
+  data-website-id="your-website-id"
+  data-before-send="addPageData"></script>
+<script>
+  function addPageData(type, payload) {
+    if (type === "event" && !payload.name) {
+      payload.data = { category: document.body.dataset.category };
+    }
+    return payload;
+  }
+</script>
+```
+
+How the tables count:
+
+- Each table shows the ten most common values in the chosen range, as
+  your site sends them, usually slugs such as `our-trips`.
+- A value with commas counts once for each part, so `tags` sent as
+  `towing,queensland` counts once for each tag. Any value with a comma is
+  split, so send names that can contain one as slugs.
+- The counts cover every hostname the website reports. The Hostnames to
+  count setting does not apply to them.
+- Page views from before your site started sending a property carry
+  nothing, so a longer range counts only the days since.
+- A property no page view carries shows no table and no error.
+
+The tables are read from Umami each time the Analytics page opens, in one
+request. They are not on the dashboard card, and when Umami cannot be
+reached the page shows its stored numbers without them. Umami 3.4 has no
+request made for counting page views by these values, so the plugin uses
+its event data request with filters that select page views. If a later
+Umami release changes how those filters combine, the tables come back
+empty until the plugin is updated.
+
 ## Demo data
 
 Set Data source to Demo data and select Refresh on the dashboard card.
@@ -181,34 +226,6 @@ and German, following each user's admin language. Other admin languages
 get English. The sidebar entry, the card title and the settings form stay
 in English, because EmDash shows those itself.
 
-## Views by event data
-
-Umami can store event data with each page view: named values your site's
-tracking code attaches, such as the category of a blog post. The
-Analytics page shows how many page views in the chosen range carried each
-value, one table for each property in the Views by event data setting,
-ten values at most. A property that no page view in the range carries
-shows nothing.
-
-- Values are shown as your site sends them, usually slugs such as
-  `our-trips`, not the category's display name.
-- A value with commas counts once for each part, so a page view sent with
-  `tags` as `towing,queensland` counts once for `towing` and once for
-  `queensland`. A property whose values can contain a comma, such as a
-  name written surname first, is split too.
-- The counts cover every hostname your website reports. The Hostnames to
-  count setting does not apply to them.
-- The tables appear only while Umami answers. When it cannot be reached,
-  the page shows the stored numbers without them, and the dashboard card
-  never shows them.
-- Umami keeps no event data for page views from before your site started
-  sending it, so a range that reaches back further counts only the later
-  days.
-
-Reading them is one request, made in place of yesterday's totals, which
-the page takes from its own store. Opening the page stays at five
-requests.
-
 ## Privacy
 
 The plugin sends the API key, the website ID and the hostnames to count
@@ -228,9 +245,9 @@ Umami Cloud account, or wherever you host your own.
 - A views column in EmDash's content list.
 - Fast catch-up on large sites. Each sync step handles a few dozen entries
   or one day of history.
-- Views by event data in the dashboard card, labels for the values, or a
-  breakdown filtered by a second property. Umami can filter page views by
-  a property, so these can come later.
+- Views by event data on the dashboard card, display names for the
+  values, and tables limited by a second value (for example categories of
+  blog posts only).
 - Screenshots.
 
 ## Attribution
