@@ -1,25 +1,25 @@
 {
-	"name": "@eisbachcode/emdash-plugin-analytics",
-	"version": "0.3.0",
-	"description": "EmDash plugin: Cloudflare Web Analytics or Umami on the dashboard and next to your content.",
+	"name": "emdash-umami-analytics",
+	"version": "0.1.0",
+	"private": true,
+	"description": "EmDash plugin: Umami analytics on the dashboard and next to your content.",
 	"keywords": [
 		"emdash",
 		"emdash-plugin",
 		"cms",
 		"plugin",
 		"analytics",
-		"cloudflare",
 		"umami",
 		"dashboard"
 	],
 	"license": "MIT",
-	"author": "Eisbachcode <daniel@eisbachcode.de>",
-	"homepage": "https://github.com/eisbachcode/emdash-plugin-analytics#readme",
+	"author": "Shane Lord",
+	"homepage": "https://github.com/shanelord01/emdash-umami-analytics#readme",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/eisbachcode/emdash-plugin-analytics.git"
+		"url": "git+https://github.com/shanelord01/emdash-umami-analytics.git"
 	},
-	"bugs": "https://github.com/eisbachcode/emdash-plugin-analytics/issues",
+	"bugs": "https://github.com/shanelord01/emdash-umami-analytics/issues",
 	"type": "module",
 	"main": "dist/index.mjs",
 	"exports": {

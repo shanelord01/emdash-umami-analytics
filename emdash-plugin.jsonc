@@ -1,13 +1,13 @@
 {
 	"$schema": "./node_modules/@emdash-cms/plugin-cli/schemas/emdash-plugin.schema.json",
 
-	"slug": "analytics",
-	"publisher": "did:plc:iucwrgdd464ddkranaa6ux3l",
+	"slug": "emdash-umami-analytics",
+	"publisher": "did:plc:efxj3t72atnke555mnnmywju",
 
 	"license": "MIT",
-	"author": { "name": "Eisbachcode", "url": "https://eisbachcode.de", "email": "daniel@eisbachcode.de" },
-	"security": { "email": "daniel@eisbachcode.de" },
-	"repo": "https://github.com/eisbachcode/emdash-plugin-analytics",
+	"author": { "name": "Shane Lord", "url": "https://github.com/shanelord01" },
+	"security": { "url": "https://github.com/shanelord01/emdash-umami-analytics/security/advisories/new" },
+	"repo": "https://github.com/shanelord01/emdash-umami-analytics",
 
 	// The only version check a user meets before installing. EmDash refuses
 	// an install whose host falls outside this range, so it carries a floor
@@ -15,33 +15,27 @@
 	// a ceiling would block correct installs every week rather than catch a
 	// break. The manifest has no advisory "tested up to" field to express
 	// caution without blocking, so the tested range belongs in the README.
+	//
+	// Listing screenshots go under `release.artifacts.screenshots`, from
+	// files in `images/`. There are none yet.
 	"release": {
-		"requires": { "env:emdash": ">=1.0.1" },
-		"artifacts": {
-			"screenshots": [
-				{ "file": "images/analytics-page.png", "lang": "en" },
-				{ "file": "images/per-entry.png", "lang": "en" },
-				{ "file": "images/widget.png", "lang": "en" },
-				{ "file": "images/editor-panel.png", "lang": "en" },
-				{ "file": "images/setup-check.png", "lang": "en" }
-			]
-		}
+		"requires": { "env:emdash": ">=1.0.1" }
 	},
 
 	// Registry results, and the Plugins list of a registry install, show this;
 	// without it they show the slug. In-process installs always show the slug.
-	"name": "Analytics",
+	"name": "Umami Analytics",
 
-	// Registry search matches the description and the keywords, so every
-	// provider this plugin supports is named in both.
+	// Registry search matches the description and the keywords, so the
+	// provider this plugin reads is named in both.
 	//
 	// `emdash-plugin validate` allows five keywords at most.
 	//
 	// The registry profile refuses a description over 140 graphemes.
 	// `emdash-plugin validate` accepts up to 1,024 characters, so the failure
 	// only shows at `release setup` or publish.
-	"description": "Cloudflare Web Analytics or Umami on the EmDash dashboard and next to your content: traffic, top pages, referrers, countries, entry views.",
-	"keywords": ["analytics", "cloudflare", "umami", "dashboard", "content"],
+	"description": "Umami analytics on the EmDash dashboard and next to your content: traffic, top pages, referrers, countries and views per entry.",
+	"keywords": ["analytics", "umami", "dashboard", "widget", "content"],
 
 	// Trust contract.
 	//

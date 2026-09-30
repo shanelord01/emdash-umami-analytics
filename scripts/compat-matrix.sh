@@ -43,7 +43,7 @@ if [ -n "$(git status --porcelain pnpm-workspace.yaml pnpm-lock.yaml)" ]; then
 	exit 1
 fi
 
-PKGS=(analytics)
+PKGS=(emdash-umami-analytics)
 
 restore() {
 	git checkout -- pnpm-workspace.yaml pnpm-lock.yaml 2>/dev/null || true

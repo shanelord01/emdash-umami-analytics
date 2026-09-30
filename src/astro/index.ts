@@ -95,7 +95,7 @@ export function analyticsBeacon(options: AnalyticsBeaconOptions = {}): AstroInte
 	const provider = options.provider ?? "umami";
 
 	return {
-		name: "@eisbachcode/emdash-plugin-analytics/astro",
+		name: "emdash-umami-analytics/astro",
 		hooks: {
 			"astro:config:setup": ({ command, injectScript, logger }) => {
 				if (provider !== "umami") {
