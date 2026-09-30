@@ -31,6 +31,8 @@ export interface AnalyticsSettings {
 	syncInterval: string;
 	retentionDays: number;
 	chunkSize: number;
+	/** Event data properties the analytics page breaks page views down by, in order. */
+	breakdownProperties: string[];
 }
 
 export const DEFAULT_SYNC_INTERVAL = "*/15 * * * *";
@@ -73,7 +75,19 @@ export async function readSettings(ctx: PluginContext): Promise<SettingsResult> 
 	const retentionDays = clampNumber(raw.get("retentionDays"), 7, MAX_RETENTION_DAYS, 90);
 	const chunkSize = clampNumber(raw.get("chunkSize"), 10, MAX_CHUNK_SIZE, MAX_CHUNK_SIZE);
 
-	const partial = { provider, apiToken, siteTag, umamiApiUrl, hosts, syncInterval, retentionDays, chunkSize };
+	const breakdownProperties = parseProperties(raw.get("breakdownProperties"));
+
+	const partial = {
+		provider,
+		apiToken,
+		siteTag,
+		umamiApiUrl,
+		hosts,
+		syncInterval,
+		retentionDays,
+		chunkSize,
+		breakdownProperties,
+	};
 	if (provider === "demo") return { ok: true, settings: partial };
 
 	// The website ID is deliberately not required: the settings form says it
@@ -82,6 +96,28 @@ export async function readSettings(ctx: PluginContext): Promise<SettingsResult> 
 	if (!apiToken) return { ok: false, missing: ["umamiApiKey"], partial };
 
 	return { ok: true, settings: partial };
+}
+
+/** The breakdown the settings start with. */
+export const DEFAULT_BREAKDOWN_PROPERTIES = ["category"];
+
+/**
+ * Most breakdowns the analytics page shows. One request reads them all,
+ * so this bounds the page's length, not its bridge calls.
+ */
+export const MAX_BREAKDOWN_PROPERTIES = 3;
+
+/**
+ * The property names, comma-separated in the setting. Unset means the
+ * default; a setting cleared to nothing turns breakdowns off.
+ */
+function parseProperties(raw: unknown): string[] {
+	if (typeof raw !== "string") return DEFAULT_BREAKDOWN_PROPERTIES;
+	const names = raw
+		.split(",")
+		.map((name) => name.trim())
+		.filter(Boolean);
+	return [...new Set(names)].slice(0, MAX_BREAKDOWN_PROPERTIES);
 }
 
 /**

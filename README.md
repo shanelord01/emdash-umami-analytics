@@ -17,7 +17,7 @@ what you find in the repository's issues.
 | Where | What you see |
 |---|---|
 | Dashboard | A Traffic card: visits and page views for the last seven days against the week before, the five most viewed pages with their entries, and the time of the last sync |
-| Plugins > Analytics | Visits and page views over 7, 30 or 90 days with a daily chart, top entries, referrers and countries, a link to the website in Umami, and a setup check |
+| Plugins > Analytics | Visits and page views over 7, 30 or 90 days with a daily chart, top entries, referrers and countries, page views by the event data your site attaches (by category, to start with), a link to the website in Umami, and a setup check |
 | Plugins > Analytics per entry | Every published entry with its page views over 7 and 30 days, sortable, by collection or across all of them. Translated content can be shown with its languages combined |
 | Entry editor | An Analytics panel with that entry's 7 and 30 day page views and the path they are counted at |
 | MCP | Four read-only tools that give an AI agent the same numbers |
@@ -76,6 +76,7 @@ Open Plugins in the admin, then the plugin's settings.
 | Sync every | 15 minutes by default |
 | Keep daily rows for | 90 days by default, 400 at most. The plugin reads this far back from Umami after install |
 | Paths per sync tick | 36 by default. Lower it to write fewer database rows per day |
+| Views by event data | `category` by default. The names of up to three event data properties your site attaches to its page views, separated by commas, for example `category, section`. Leave it empty to show none. See "Views by event data" below |
 
 After saving, open Plugins > Analytics and select Check setup. It runs
 through everything the numbers depend on, from the key to the scheduled
@@ -89,18 +90,19 @@ The Umami API has to be reachable on a public hostname. EmDash does not
 let a plugin request a private address, so `localhost`, a LAN address or
 a VPN-only name will not work.
 
-If a sign-in proxy sits in front of your Umami, let the five endpoints
+If a sign-in proxy sits in front of your Umami, let the six endpoints
 below through without it. Umami checks the API key on each of them.
 
 ## What the plugin requests
 
-Five `GET` endpoints of the Umami API, each with the API key as a Bearer
+Six `GET` endpoints of the Umami API, each with the API key as a Bearer
 token.
 
 | Endpoint | Used for |
 |---|---|
 | `/websites/{id}/stats` | one day's page views, visits and visitors |
 | `/websites/{id}/metrics/expanded` | pages, referrers, countries and hostnames |
+| `/websites/{id}/event-data/events` | page views by event data value, when the Analytics page opens |
 | `/websites` | listing websites, only while no website ID is set or during a setup check |
 | `/me/teams` | listing the key's teams, only while no website ID is set |
 | `/teams/{id}/websites` | listing a team's websites, only while no website ID is set |
@@ -133,6 +135,51 @@ When you compare with Umami's own dashboard:
 - Pages under `/_emdash` are left out of every number.
 - A day with 10,000 or more distinct paths is more than the plugin reads.
   It reports that and stores nothing for that day.
+
+## Views by event data
+
+Umami can store extra values with each page view, such as the category of
+the blog post being read. When your site sends them, the Analytics page
+shows how many page views carried each value, one table for each property
+named in the Views by event data setting. The default is `category`.
+
+Your site attaches the values with the Umami tracker's `data-before-send`
+hook. A page view is an `event` payload without a `name`:
+
+```html
+<script defer src="https://your-umami/script.js"
+  data-website-id="your-website-id"
+  data-before-send="addPageData"></script>
+<script>
+  function addPageData(type, payload) {
+    if (type === "event" && !payload.name) {
+      payload.data = { category: document.body.dataset.category };
+    }
+    return payload;
+  }
+</script>
+```
+
+How the tables count:
+
+- Each table shows the ten most common values in the chosen range, as
+  your site sends them, usually slugs such as `our-trips`.
+- A value with commas counts once for each part, so `tags` sent as
+  `towing,queensland` counts once for each tag. Any value with a comma is
+  split, so send names that can contain one as slugs.
+- The counts cover every hostname the website reports. The Hostnames to
+  count setting does not apply to them.
+- Page views from before your site started sending a property carry
+  nothing, so a longer range counts only the days since.
+- A property no page view carries shows no table and no error.
+
+The tables are read from Umami each time the Analytics page opens, in one
+request. They are not on the dashboard card, and when Umami cannot be
+reached the page shows its stored numbers without them. Umami 3.4 has no
+request made for counting page views by these values, so the plugin uses
+its event data request with filters that select page views. If a later
+Umami release changes how those filters combine, the tables come back
+empty until the plugin is updated.
 
 ## Demo data
 
@@ -198,6 +245,9 @@ Umami Cloud account, or wherever you host your own.
 - A views column in EmDash's content list.
 - Fast catch-up on large sites. Each sync step handles a few dozen entries
   or one day of history.
+- Views by event data on the dashboard card, display names for the
+  values, and tables limited by a second value (for example categories of
+  blog posts only).
 - Screenshots.
 
 ## Attribution

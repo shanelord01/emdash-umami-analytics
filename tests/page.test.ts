@@ -226,6 +226,47 @@ describe("renderPage", () => {
 	});
 });
 
+describe("views by event data", () => {
+	const breakdowns = (properties: NonNullable<PageInput["breakdowns"]>["properties"]) => ({
+		referrers: [],
+		countries: [],
+		since: addDays(TODAY, -29),
+		properties,
+	});
+
+	it("shows a table for each property the range's page views carry, and none for one they did not", () => {
+		const blocks = renderPage(
+			input({
+				breakdowns: breakdowns([
+					{ property: "category", values: [{ value: "our-trips", pageviews: 12 }] },
+					{ property: "byline", values: [] },
+				]),
+			}),
+		);
+		expectValid(blocks);
+		const text = JSON.stringify(blocks);
+		expect(text).toContain("Views by category");
+		expect(text).toContain("our-trips");
+		expect(text).not.toContain("Views by byline");
+		expect(text).toMatch(/counted on every hostname/);
+	});
+
+	it("shows nothing, and no note, when no page view carried any", () => {
+		const text = JSON.stringify(renderPage(input({ breakdowns: breakdowns([{ property: "category", values: [] }]) })));
+		expect(text).not.toMatch(/Views by|every hostname/);
+	});
+
+	it("lists ten values at most, and names the table in the reader's language", () => {
+		const values = Array.from({ length: 14 }, (_, i) => ({ value: `v-${i}`, pageviews: 20 - i }));
+		const blocks = renderPage(input({ locale: "de", breakdowns: breakdowns([{ property: "category", values }]) }));
+		const table = blocks.find((b) => (b as { block_id?: string }).block_id === "analytics:property:category") as unknown as {
+			rows: unknown[];
+		};
+		expect(table.rows).toHaveLength(10);
+		expect(JSON.stringify(blocks)).toContain("Aufrufe nach category");
+	});
+});
+
 describe("parseRange", () => {
 	it("accepts the offered ranges as strings or numbers", () => {
 		expect(parseRange("90")).toBe(90);

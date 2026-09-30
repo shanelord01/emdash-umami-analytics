@@ -25,7 +25,7 @@
 import type { PluginContext } from "emdash/plugin";
 
 import { entriesStore, dailyStore, rollupStore, BIND_LIMIT } from "../store/access.js";
-import type { LabelledRow, Overview, Provider } from "../providers/types.js";
+import type { LabelledRow, Overview, PropertyBreakdown, Provider } from "../providers/types.js";
 import { historyReaches, sumWindow, type EntryRow, type RollupRow } from "../store/rows.js";
 import type { SyncState } from "../sync/scheduler.js";
 import { addDays, daysBetween, utcDay, type Day } from "../sync/window.js";
@@ -99,7 +99,13 @@ export interface PageInput {
 	 * Referrers and countries from the live answer, and the first day it
 	 * covers, which is later than the range start for long ranges.
 	 */
-	breakdowns?: { referrers: LabelledRow[]; countries: LabelledRow[]; since: Day };
+	breakdowns?: {
+		referrers: LabelledRow[];
+		countries: LabelledRow[];
+		since: Day;
+		/** Page views by event data property, when the provider read them. */
+		properties?: PropertyBreakdown[];
+	};
 	now: Date;
 	locale?: string;
 }
@@ -108,6 +114,9 @@ export interface PageInput {
  * Gather the page. Calls: the live read (one fetch), up to two rollup
  * pages, one entries lookup; without a live answer, up to three daily
  * pages as well.
+ *
+ * Event data breakdowns come with the live read, in the same number of
+ * requests (see `OverviewOptions`), and are shown only when it answers.
  *
  * A provider whose overview is several requests counts them (`requests`).
  * When such a read fails after the first request, each further one it
@@ -121,6 +130,7 @@ export async function loadPage(
 	dashboardUrl: string | null,
 	locale?: string,
 	provider?: Provider | null,
+	properties: string[] = [],
 ): Promise<PageInput> {
 	const today = utcDay(now);
 
@@ -131,7 +141,7 @@ export async function loadPage(
 	// in the store from the first sync.
 	const exactStart = provider ? addDays(today, -(provider.capabilities.exactWindowDays - 1)) : rangeStart;
 	const liveSince = daysBetween(rangeStart, exactStart) > 0 ? exactStart : rangeStart;
-	const live = provider ? await provider.overview({ since: liveSince, until: today }) : null;
+	const live = provider ? await provider.overview({ since: liveSince, until: today }, { properties }) : null;
 
 	const stored: RollupRow[] = [];
 	const rollup = rollupStore(ctx);
@@ -169,7 +179,12 @@ export async function loadPage(
 			topEntries,
 			entriesByPath: await lookup(topEntries),
 			dashboardUrl,
-			breakdowns: { referrers: live.value.referrers, countries: live.value.countries, since: liveSince },
+			breakdowns: {
+				referrers: live.value.referrers,
+				countries: live.value.countries,
+				since: liveSince,
+				...(live.value.properties && { properties: live.value.properties }),
+			},
 			now,
 			locale,
 		};
@@ -380,6 +395,41 @@ export function renderPage(input: PageInput): AnalyticsBlock[] {
 		out.push(context(t(lang, "snapshotSince", { date: formatDay(state.snapshotSince, lang) })));
 	}
 
+	out.push(...propertyTables(input.breakdowns?.properties ?? [], lang));
+
+	return out;
+}
+
+/** Values shown per breakdown, most viewed first. */
+const PROPERTY_ROWS = 10;
+
+/**
+ * One table per event data property that page views in the range carry.
+ * A property none of them carried shows nothing: it is either not sent by
+ * this site or not sent yet, and neither is an error.
+ */
+function propertyTables(properties: PropertyBreakdown[], lang: Lang): AnalyticsBlock[] {
+	const shown = properties.filter((breakdown) => breakdown.values.length > 0);
+	if (shown.length === 0) return [];
+
+	const out: AnalyticsBlock[] = [];
+	for (const breakdown of shown) {
+		const id = `analytics:property:${breakdown.property.toLowerCase().replace(/[^a-z0-9_-]+/g, "-")}`;
+		out.push(header(t(lang, "viewsBy", { property: breakdown.property })));
+		out.push(
+			table({
+				blockId: id,
+				pageActionId: `${id}:page`,
+				columns: [
+					{ key: "value", label: t(lang, "colValue"), format: "text" },
+					{ key: "views", label: t(lang, "colViews"), format: "number" },
+				],
+				rows: breakdown.values.slice(0, PROPERTY_ROWS).map((row) => ({ value: row.value, views: row.pageviews })),
+				emptyText: t(lang, "nothingRecorded"),
+			}),
+		);
+	}
+	out.push(context(t(lang, "propertiesNote")));
 	return out;
 }
 

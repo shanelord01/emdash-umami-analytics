@@ -1,5 +1,13 @@
 # emdash-umami-analytics
 
+## 0.1.1
+
+The Analytics page shows page views by the event data your site attaches to them, starting with a "Views by category" table. The property names come from the new Views by event data setting (`category` unless changed), up to three, so section, tag or byline tables are a setting away. A value sent as a comma-separated list, such as tags, counts once for each part. A site that sends no event data sees nothing new.
+
+The tables are read from Umami with the page, in the same five requests: the page now takes yesterday's totals from its own store. They count page views on every hostname the website reports, and they appear only while Umami answers. Values are shown as the site sends them, usually slugs.
+
+Umami's `/websites/{id}/event-data/events` endpoint is new among those the plugin requests. If a sign-in proxy guards your Umami, let it through as well.
+
 ## 0.1.0
 
 First release. Umami analytics on the EmDash dashboard and next to your content, for Umami Cloud and for a self-hosted Umami from 3.4.0:

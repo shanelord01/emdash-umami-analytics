@@ -321,7 +321,8 @@ async function handlePage(
 	const settings = await readSettings(ctx);
 	const state = await readState(ctx);
 	const provider = liveProvider(ctx, settings);
-	const input = await loadPage(ctx, state, interaction.range, now, dashboardUrl(ctx, settings), lang, provider);
+	const properties = settings.ok ? settings.settings.breakdownProperties : [];
+	const input = await loadPage(ctx, state, interaction.range, now, dashboardUrl(ctx, settings), lang, provider, properties);
 	const blocks = renderPage(input);
 	if (interaction.kind !== "refresh") return { blocks };
 

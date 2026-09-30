@@ -113,6 +113,12 @@
 				"default": "https://api.umami.is/v1",
 				"description": "Umami Cloud as it stands. For a self-hosted Umami, https://your-host/api: a public hostname, because EmDash refuses private addresses."
 			},
+			"breakdownProperties": {
+				"type": "string",
+				"label": "Views by event data",
+				"default": "category",
+				"description": "Comma-separated names of event data the site attaches to its page views, up to three. The Analytics page shows page views by each one's values. A value with commas counts once for each part. Leave empty to show none."
+			},
 			"hosts": {
 				"type": "string",
 				"label": "Hostnames to count",

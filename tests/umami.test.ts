@@ -531,3 +531,89 @@ describe("the dashboard link", () => {
 		expect(umamiDashboardUrl(WEBSITE, "https://stats.example.com/v2")).toBeNull();
 	});
 });
+
+describe("page views by event data", () => {
+	const eventRows = [
+		{ eventName: null, propertyName: "category", dataType: 1, propertyValue: "fuel-planning", total: 3 },
+		{ eventName: null, propertyName: "category", dataType: 1, propertyValue: "our-trips", total: 7 },
+		{ eventName: null, propertyName: "tags", dataType: 1, propertyValue: "queensland,towing", total: 4 },
+		{ eventName: null, propertyName: "tags", dataType: 1, propertyValue: " towing , outback", total: 2 },
+		{ eventName: null, propertyName: "section", dataType: 1, propertyValue: "blog_post", total: 9 },
+		// A custom event's data, which must not count as page views.
+		{ eventName: "cta_click", propertyName: "category", dataType: 1, propertyValue: "our-trips", total: 50 },
+	];
+	const withEventData = (call: Call): Reply =>
+		call.url.pathname.endsWith("/event-data/events")
+			? { body: eventRows }
+			: { body: kind(call) === "stats" ? stats(4, 2, 2) : [] };
+
+	it("reads them in place of the day before's totals, so the overview is still five requests", async () => {
+		const { calls, fetch } = recorder(withEventData);
+		const umami = provider(fetch);
+		const res = await umami.overview(RANGE, { properties: ["category"] });
+
+		expect(res.ok).toBe(true);
+		expect(calls).toHaveLength(5);
+		expect(calls.filter((call) => kind(call) === "stats").map(dayOf)).toEqual(["2026-09-20"]);
+		if (res.ok) expect(res.value.series.map((row) => row.date)).toEqual(["2026-09-20"]);
+	});
+
+	it("asks for page views only, per property value, keeping the admin out", async () => {
+		// `event` alone would filter on an event name, which page views do
+		// not have. With `match=any` the path filter carries the query, and
+		// `eventType=1` keeps custom events out whatever `match` says.
+		const { calls, fetch } = recorder(withEventData);
+		await provider(fetch).overview(RANGE, { properties: ["category"] });
+		const asked = calls.find((call) => call.url.pathname.endsWith("/event-data/events"))!;
+		expect(Object.fromEntries(asked.url.searchParams)).toEqual({
+			startAt: String(Date.parse("2026-09-14T00:00:00.000Z")),
+			endAt: String(Date.parse("2026-09-20T23:59:59.999Z")),
+			event: "eq.emdash-umami-analytics:page-views",
+			match: "any",
+			path: "nre.^/_emdash(/|$)",
+			eventType: "1",
+		});
+	});
+
+	it("counts page views per value, splits comma-separated values and leaves custom events out", async () => {
+		const { fetch } = recorder(withEventData);
+		const res = await provider(fetch).overview(RANGE, { properties: ["category", "tags", "byline"] });
+		expect(res.ok && res.value.properties).toEqual([
+			{
+				property: "category",
+				values: [
+					{ value: "our-trips", pageviews: 7 },
+					{ value: "fuel-planning", pageviews: 3 },
+				],
+			},
+			{
+				property: "tags",
+				values: [
+					{ value: "towing", pageviews: 6 },
+					{ value: "queensland", pageviews: 4 },
+					{ value: "outback", pageviews: 2 },
+				],
+			},
+			// Asked for and never sent: listed, with nothing in it.
+			{ property: "byline", values: [] },
+		]);
+	});
+
+	it("keeps the rest of the overview when the event data cannot be read", async () => {
+		const { fetch } = recorder((call) =>
+			call.url.pathname.endsWith("/event-data/events")
+				? { body: { error: { code: "unauthorized" } }, status: 401 }
+				: { body: kind(call) === "stats" ? stats(4, 2, 2) : [] },
+		);
+		const res = await provider(fetch).overview(RANGE, { properties: ["category"] });
+		expect(res.ok).toBe(true);
+		if (res.ok) expect(res.value.properties).toBeUndefined();
+	});
+
+	it("reads no event data unless asked", async () => {
+		const { calls, fetch } = recorder(withEventData);
+		const res = await provider(fetch).overview(RANGE);
+		expect(calls.some((call) => call.url.pathname.endsWith("/event-data/events"))).toBe(false);
+		if (res.ok) expect(res.value.properties).toBeUndefined();
+	});
+});

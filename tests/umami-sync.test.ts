@@ -554,6 +554,8 @@ describe("the analytics page", () => {
 		const text = JSON.stringify(response.blocks);
 
 		expect(host.http.requests()).toHaveLength(5);
+		// This site sends no event data, so there is no breakdown to show.
+		expect(text).not.toMatch(/Views by/);
 		expect(text).toContain(`https://cloud.umami.is/websites/${UMAMI_WEBSITE}`);
 		expect(text).toContain("Open in Umami");
 		// Umami is exact over the whole range, so nothing is qualified as
@@ -563,6 +565,55 @@ describe("the analytics page", () => {
 		expect(text).not.toMatch(/estimated/);
 		const entries = response.blocks.find((b) => b.block_id === "analytics:entries") as { rows: Array<Record<string, unknown>> };
 		expect(entries.rows).toEqual([{ entry: "/a/", collection: "posts", path: "/a/", views: 30, visits: 13 }]);
+	});
+
+	it("shows page views by category over the whole range, read with the same five requests", async () => {
+		host = await newHost("umami");
+		await respondUmamiOverview(host, {
+			since: addDays(TODAY, -89),
+			eventData: [
+				["category", "our-trips", 12],
+				["category", "fuel-planning", 5],
+				["section", "blog_post", 17],
+			],
+		});
+
+		const response = await host.admin.act("/analytics", RANGE_ACTION, { value: 90 });
+
+		const asked = host.http.requests().map((r) => r.url);
+		expect(asked).toHaveLength(5);
+		expect(asked).toContain(umamiUrl.eventData(addDays(TODAY, -89), TODAY));
+		// The day before's totals come from the store instead.
+		expect(asked).not.toContain(umamiUrl.stats(addDays(TODAY, -1)));
+		const table = response.blocks.find((b) => b.block_id === "analytics:property:category") as
+			| { rows: Array<Record<string, unknown>> }
+			| undefined;
+		expect(table?.rows).toEqual([
+			{ value: "our-trips", views: 12 },
+			{ value: "fuel-planning", views: 5 },
+		]);
+		const text = JSON.stringify(response.blocks);
+		expect(text).toContain("Views by category");
+		// Only the properties in the setting are shown.
+		expect(text).not.toMatch(/Views by section/);
+	});
+
+	it("follows the setting's properties, and reads yesterday again when it is empty", async () => {
+		host = await newHost("umami");
+		await host.fixtures.plugin.setting("breakdownProperties", "section, category");
+		await respondUmamiOverview(host, { eventData: [["section", "blog_post", 17], ["category", "our-trips", 12]] });
+		const both = JSON.stringify((await host.admin.act("/analytics", RANGE_ACTION, { value: 7 })).blocks);
+		expect(both.indexOf("Views by section")).toBeGreaterThan(-1);
+		expect(both.indexOf("Views by section")).toBeLessThan(both.indexOf("Views by category"));
+
+		await host.fixtures.plugin.setting("breakdownProperties", "");
+		host.http.clear();
+		await respondUmamiOverview(host);
+		const none = JSON.stringify((await host.admin.act("/analytics", RANGE_ACTION, { value: 7 })).blocks);
+		const asked = host.http.requests().map((r) => r.url);
+		expect(asked).toContain(umamiUrl.stats(addDays(TODAY, -1)));
+		expect(asked.some((url) => url.includes("/event-data/"))).toBe(false);
+		expect(none).not.toMatch(/Views by/);
 	});
 
 	it("says what to check when a sync found no page views", async () => {
