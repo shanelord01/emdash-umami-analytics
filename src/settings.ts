@@ -17,7 +17,8 @@ import { clampNumber } from "./values.js";
 import type { PluginContext } from "emdash/plugin";
 
 import { siteHosts } from "./index/paths.js";
-import type { ProviderId } from "./providers/types.js";
+import type { ProviderId, ReadSpec } from "./providers/types.js";
+import { MAX_READ_DEPTHS } from "./sync/reads.js";
 
 export interface AnalyticsSettings {
 	provider: ProviderId;
@@ -33,6 +34,8 @@ export interface AnalyticsSettings {
 	chunkSize: number;
 	/** Event data properties the analytics page breaks page views down by, in order. */
 	breakdownProperties: string[];
+	/** The read event and its properties, or null while read-through is off. */
+	reads: ReadSpec | null;
 }
 
 export const DEFAULT_SYNC_INTERVAL = "*/15 * * * *";
@@ -76,6 +79,7 @@ export async function readSettings(ctx: PluginContext): Promise<SettingsResult> 
 	const chunkSize = clampNumber(raw.get("chunkSize"), 10, MAX_CHUNK_SIZE, MAX_CHUNK_SIZE);
 
 	const breakdownProperties = parseProperties(raw.get("breakdownProperties"));
+	const reads = parseReads(raw);
 
 	const partial = {
 		provider,
@@ -87,6 +91,7 @@ export async function readSettings(ctx: PluginContext): Promise<SettingsResult> 
 		retentionDays,
 		chunkSize,
 		breakdownProperties,
+		reads,
 	};
 	if (provider === "demo") return { ok: true, settings: partial };
 
@@ -118,6 +123,26 @@ function parseProperties(raw: unknown): string[] {
 		.map((name) => name.trim())
 		.filter(Boolean);
 	return [...new Set(names)].slice(0, MAX_BREAKDOWN_PROPERTIES);
+}
+
+/**
+ * Read-through, on only when the event, both properties and at least one
+ * depth are set: anything less could not be counted, so it reads as off.
+ */
+function parseReads(raw: Map<string, unknown>): ReadSpec | null {
+	const event = str(raw.get("readEvent"));
+	const entryProperty = str(raw.get("readEntryProperty"));
+	const depthProperty = str(raw.get("readDepthProperty"));
+	const depths = [
+		...new Set(
+			str(raw.get("readDepthValues"))
+				.split(",")
+				.map((value) => value.trim())
+				.filter(Boolean),
+		),
+	].slice(0, MAX_READ_DEPTHS);
+	if (!event || !entryProperty || !depthProperty || depths.length === 0) return null;
+	return { event, entryProperty, depthProperty, depths };
 }
 
 /**

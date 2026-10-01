@@ -71,6 +71,10 @@ export interface DailyRow {
 	pageviews: number;
 	visits: number;
 	uniques?: number;
+	/** Visits with a single page view, when the provider counts them. */
+	bounces?: number;
+	/** Seconds all visits lasted together, when the provider counts it. */
+	totaltime?: number;
 	/** 1 means every beacon was counted; above 1 the numbers are estimates. */
 	sampleInterval: number;
 }
@@ -99,6 +103,27 @@ export interface PropertyBreakdown {
 	property: string;
 	/** Most viewed first. A value the site sent as a comma-separated list counts once for each part. */
 	values: Array<{ value: string; pageviews: number }>;
+}
+
+/** A custom event the site sends as a reader reaches each depth of an entry. */
+export interface ReadSpec {
+	event: string;
+	/** The event's property that names the entry, by slug or by path. */
+	entryProperty: string;
+	/** The event's property that names the depth reached. */
+	depthProperty: string;
+	/** The depth values, shallowest first. */
+	depths: string[];
+}
+
+/** Read events counted by entry over one range and by day over another. */
+export interface ReadCounts {
+	/** Per value the site sent for the entry, reads per depth in the order of `ReadSpec.depths`. */
+	byEntry: Record<string, number[]>;
+	/** Per day with any reads, reads per depth. */
+	daily: Array<{ date: Day; counts: number[] }>;
+	/** True when a per-entry list was cut short by the provider's row limit. */
+	partial: boolean;
 }
 
 export interface OverviewOptions {
@@ -196,6 +221,13 @@ export interface Provider {
 	 * page views. A `wide-pull` provider has it.
 	 */
 	dayTotals?(day: Day): Promise<Result<DailyRow | null>>;
+
+	/**
+	 * Read events by entry over `ranges.entries` and by day over
+	 * `ranges.daily`, two requests per depth. A provider that reads custom
+	 * events has it.
+	 */
+	readThrough?(spec: ReadSpec, ranges: { entries: DateRange; daily: DateRange }): Promise<Result<ReadCounts>>;
 
 	/**
 	 * Requests this instance has sent. Present when one method may send

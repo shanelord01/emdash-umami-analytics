@@ -39,6 +39,8 @@ import type {
 	PathRow,
 	PropertyBreakdown,
 	Provider,
+	ReadCounts,
+	ReadSpec,
 	ProviderCapabilities,
 	Result,
 	Retention,
@@ -71,6 +73,9 @@ const REFERRERS_LIMIT = 20;
 const COUNTRIES_LIMIT = 50;
 const HOSTNAMES_LIMIT = 50;
 const WEBSITES_LIMIT = 100;
+
+/** Rows `event-data/values` returns at most, fixed in its query. */
+const VALUES_LIMIT = 100;
 
 /**
  * Teams whose websites one discovery reads. The setup check is the
@@ -332,7 +337,89 @@ class UmamiProvider implements Provider {
 		if (pageviews === 0 && visits === 0) return { ok: true, value: null };
 		return {
 			ok: true,
-			value: { date: day, pageviews, visits, uniques: numberAt(res.value, "visitors"), sampleInterval: 1 },
+			value: {
+				date: day,
+				pageviews,
+				visits,
+				uniques: numberAt(res.value, "visitors"),
+				bounces: numberAt(res.value, "bounces"),
+				totaltime: numberAt(res.value, "totaltime"),
+				sampleInterval: 1,
+			},
+		};
+	}
+
+	/**
+	 * Read events by entry and by day: per depth, one `event-data/values`
+	 * request for the entry property over `ranges.entries`, and one
+	 * `events/series` request over `ranges.daily`, each narrowed to the
+	 * depth by an event data filter (`epf0`). Both routes read custom
+	 * events, which have the event name they need.
+	 *
+	 * `event-data/values` returns 100 values at most, the most read first,
+	 * so an entry beyond them is reported as missing (`partial`), not as
+	 * unread.
+	 */
+	async readThrough(
+		spec: ReadSpec,
+		ranges: { entries: DateRange; daily: DateRange },
+	): Promise<Result<ReadCounts>> {
+		const results = await Promise.all(
+			spec.depths.flatMap((depth) => {
+				const narrowed: [string, string] = ["epf0", textEquals(spec.depthProperty, depth)];
+				return [
+					this.#get(`${this.#website}/event-data/values`, [
+						...this.#query(ranges.entries),
+						["eventName", spec.event],
+						["propertyName", spec.entryProperty],
+						narrowed,
+					]),
+					this.#get(`${this.#website}/events/series`, [
+						...this.#query(ranges.daily),
+						["unit", "day"],
+						["timezone", "UTC"],
+						["event", `eq.${spec.event}`],
+						narrowed,
+					]),
+				];
+			}),
+		);
+
+		const byEntry: Record<string, number[]> = {};
+		const daily = new Map<Day, number[]>();
+		const zeros = () => spec.depths.map(() => 0);
+		let partial = false;
+		for (const [i] of spec.depths.entries()) {
+			const values = results[i * 2]!;
+			const series = results[i * 2 + 1]!;
+			if (!values.ok) return values;
+			if (!series.ok) return series;
+			if (!Array.isArray(values.value) || !Array.isArray(series.value)) return failure("umamiUnexpected");
+
+			if (values.value.length >= VALUES_LIMIT) partial = true;
+			for (const row of values.value) {
+				if (!isRecord(row) || typeof row.value !== "string" || !row.value) continue;
+				const key = row.value.startsWith("/") ? normalizePath(row.value, this.#slash) : row.value;
+				(byEntry[key] ??= zeros())[i]! += numberAt(row, "total");
+			}
+			for (const row of series.value) {
+				if (!isRecord(row) || typeof row.t !== "string") continue;
+				const date = row.t.slice(0, 10);
+				const counts = daily.get(date) ?? zeros();
+				counts[i]! += numberAt(row, "y");
+				daily.set(date, counts);
+			}
+		}
+
+		return {
+			ok: true,
+			value: {
+				byEntry,
+				daily: [...daily]
+					.map(([date, counts]) => ({ date, counts }))
+					.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)),
+				partial,
+			},
 		};
 	}
 
@@ -566,6 +653,15 @@ function labelled(rows: MetricRow[], label: (name: string) => string): LabelledR
 		.filter((row) => row.name !== "")
 		.map((row) => ({ label: label(row.name), visits: row.visits, pageviews: row.pageviews }))
 		.sort((a, b) => b.visits - a.visits);
+}
+
+/**
+ * An event data filter for a text property equal to one value, in the
+ * `epf` form Umami parses: data type, operator, property name, value. A
+ * dot in the name is escaped, since dots separate the parts.
+ */
+function textEquals(property: string, value: string): string {
+	return `1.eq.${encodeURIComponent(property).replaceAll(".", "%2E")}.${value}`;
 }
 
 /** Umami stores ISO 3166-1 alpha-2 codes, which the page turns into names. */

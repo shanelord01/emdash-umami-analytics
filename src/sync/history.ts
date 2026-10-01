@@ -34,7 +34,7 @@ import type { PluginContext } from "emdash/plugin";
 import { failure } from "../i18n.js";
 import type { PathDayRow, Provider, Result } from "../providers/types.js";
 import { dailyStore, rollupStore, ID_BATCH } from "../store/access.js";
-import { dailyId, decideWrite, type DailyRow, type RollupRow } from "../store/rows.js";
+import { dailyId, decideWrite, engagementOf, type DailyRow, type RollupRow } from "../store/rows.js";
 import { addDays, daysBetween, type Day } from "./window.js";
 
 /** Which closed days have been read whole. */
@@ -44,6 +44,21 @@ export interface HistoryPass {
 	until?: Day;
 	/** A day whose paths did not fit one step, and the last path written. */
 	partial?: { day: Day; after: string };
+	/** The `HISTORY_VERSION` the pass was started under. */
+	version?: number;
+}
+
+/**
+ * Raised when a step starts storing more with each day. Version 2 stores
+ * each day's bounces and visit time with its totals. A pass from an older
+ * version is started again, so the days it read gain what it did not
+ * store; rows whose numbers are unchanged are compared and not written.
+ */
+export const HISTORY_VERSION = 2;
+
+/** The pass as this version continues it: one from an older version counts as not started. */
+function current(pass: HistoryPass | undefined): HistoryPass | undefined {
+	return pass?.version === HISTORY_VERSION ? pass : undefined;
 }
 
 /**
@@ -60,7 +75,8 @@ const DAY_OVERHEAD = 4;
  * unbroken run. Then the run grows backwards to `floor`, the oldest day
  * the store keeps.
  */
-export function nextHistoryDay(pass: HistoryPass | undefined, today: Day, floor: Day): Day | null {
+export function nextHistoryDay(stored: HistoryPass | undefined, today: Day, floor: Day): Day | null {
+	const pass = current(stored);
 	const yesterday = addDays(today, -1);
 	// Nothing read yet, or a run that ended before the retention limit and
 	// cannot be joined up any more: start again at yesterday.
@@ -81,14 +97,19 @@ export function historyDue(pass: HistoryPass | undefined, today: Day, floor: Day
  * False once the oldest day read is at the limit: from then on the only
  * work left is the day that closed last night.
  */
-export function historyBackfilling(pass: HistoryPass | undefined, floor: Day): boolean {
+export function historyBackfilling(stored: HistoryPass | undefined, floor: Day): boolean {
+	const pass = current(stored);
 	if (!pass?.since || !pass.until || daysBetween(pass.until, floor) > 0) return true;
 	return daysBetween(floor, pass.since) > 0;
 }
 
-function advanced(pass: HistoryPass | undefined, day: Day, floor: Day): HistoryPass {
-	if (!pass?.since || !pass.until || daysBetween(pass.until, floor) > 0) return { since: day, until: day };
-	return daysBetween(pass.until, day) > 0 ? { since: pass.since, until: day } : { since: day, until: pass.until };
+function advanced(stored: HistoryPass | undefined, day: Day, floor: Day): HistoryPass {
+	const pass = current(stored);
+	const version = HISTORY_VERSION;
+	if (!pass?.since || !pass.until || daysBetween(pass.until, floor) > 0) return { since: day, until: day, version };
+	return daysBetween(pass.until, day) > 0
+		? { since: pass.since, until: day, version }
+		: { since: day, until: pass.until, version };
 }
 
 /**
@@ -113,7 +134,7 @@ export async function runHistoryStep(
 	if (!daily || !rollup) return failure("storageUnavailable");
 	if (!provider.day || !provider.dayTotals) return { ok: true, value: { pass: previous, written: 0, skipped: 0 } };
 
-	let pass = previous;
+	let pass = current(previous);
 	let spent = 0;
 	let written = 0;
 	let skipped = 0;
@@ -148,7 +169,7 @@ export async function runHistoryStep(
 		skipped += counts.skipped;
 
 		if (batch.length < pending.length) {
-			pass = { ...pass, partial: { day, after: batch[batch.length - 1]!.path } };
+			pass = { ...pass, version: HISTORY_VERSION, partial: { day, after: batch[batch.length - 1]!.path } };
 			break;
 		}
 
@@ -159,6 +180,7 @@ export async function runHistoryStep(
 				date: day,
 				pageviews: totals.value.pageviews,
 				visits: totals.value.visits,
+				...engagementOf(totals.value),
 				sampleInterval: totals.value.sampleInterval,
 				fetchedAt,
 			};

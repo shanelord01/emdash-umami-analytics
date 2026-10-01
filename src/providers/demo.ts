@@ -146,7 +146,7 @@ class DemoProvider implements Provider {
 				acc.sampleInterval = Math.max(acc.sampleInterval, sampleInterval);
 				byPath.set(path, acc);
 			}
-			series.push({ date: day, pageviews, visits, sampleInterval });
+			series.push({ date: day, pageviews, visits, ...engagement(day, visits), sampleInterval });
 		}
 
 		const pageviews = series.reduce((n, d) => n + d.pageviews, 0);
@@ -235,6 +235,17 @@ class DemoProvider implements Provider {
 		const midnight = Date.parse(`${day}T00:00:00.000Z`);
 		return (now.getTime() - midnight) / 86_400_000;
 	}
+}
+
+/**
+ * Bounces and visit time for a day: about two visits in three leave after
+ * one page, and a visit lasts a minute or so, varying by day.
+ */
+function engagement(day: Day, visits: number): { bounces: number; totaltime: number } {
+	return {
+		bounces: Math.round(visits * (0.55 + 0.2 * unit(`bounces|${day}`))),
+		totaltime: Math.round(visits * (45 + 60 * unit(`time|${day}`))),
+	};
 }
 
 function dayVolume(day: Day): number {

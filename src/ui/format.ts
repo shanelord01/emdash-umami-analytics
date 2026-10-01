@@ -113,3 +113,42 @@ export function qualifier(
 	if (opts.provisional) notes.push(t(lang, "todayCounting"));
 	return notes.join(" · ");
 }
+
+/** A rate between 0 and 1 as a whole percentage: "77 %" in German, "77%" in English. */
+export function formatPercent(rate: number, locale?: string): string {
+	try {
+		return new Intl.NumberFormat(langOf(locale), { style: "percent", maximumFractionDigits: 0 }).format(rate);
+	} catch {
+		return `${Math.round(rate * 100)}%`;
+	}
+}
+
+/** Seconds as the reader says them: "45 s", "1 min 23 s". */
+export function formatDuration(seconds: number, locale?: string): string {
+	const lang = langOf(locale);
+	const whole = Math.max(0, Math.round(seconds));
+	if (whole < 60) return t(lang, "durationSeconds", { seconds: whole });
+	return t(lang, "durationMinutes", { minutes: Math.floor(whole / 60), seconds: whole % 60 });
+}
+
+/** A ratio to two decimals in the reader's notation: "2.07", "2,07". */
+export function formatRatio(value: number, locale?: string): string {
+	try {
+		return new Intl.NumberFormat(langOf(locale), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+	} catch {
+		return value.toFixed(2);
+	}
+}
+
+/**
+ * The comparison sentence for a rate. A change in a percentage is given in
+ * points: from 87.5 % to 77 % is 10.5 points down, which a relative change
+ * of 12 % would hide.
+ */
+export function pointsText(current: number, previous: number | null, locale?: string): string {
+	const lang = langOf(locale);
+	if (previous === null) return t(lang, "noEarlierPeriod");
+	const points = (current - previous) * 100;
+	const change = new Intl.NumberFormat(lang, { signDisplay: "exceptZero", maximumFractionDigits: 1 }).format(points);
+	return t(lang, "pointsVsPrevious", { change });
+}

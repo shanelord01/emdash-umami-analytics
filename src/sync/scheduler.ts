@@ -34,15 +34,16 @@
 import type { PluginContext } from "emdash/plugin";
 
 import { failure, type Problem } from "../i18n.js";
-import { bootstrapIndex, INDEX_VERSION, type IndexCursor } from "../index/bootstrap.js";
+import { bootstrapIndex, INDEX_PAGE_SIZE, INDEX_VERSION, type IndexCursor } from "../index/bootstrap.js";
 import { createDemoProvider } from "../providers/demo.js";
 import { createUmamiProvider } from "../providers/umami.js";
 import type { DateRange, Overview, Provider, ProviderId } from "../providers/types.js";
 import { chunk, dailyStore, entriesStore, rollupStore, BIND_LIMIT, ID_BATCH } from "../store/access.js";
-import { dailyId, decideWrite, type DailyRow, type EntryRow, type RollupRow } from "../store/rows.js";
+import { dailyId, decideWrite, engagementOf, type DailyRow, type EntryRow, type RollupRow } from "../store/rows.js";
 import { recentViewsOf, withRecent } from "../store/views.js";
 import { missingSettingsMessage, readSettings, type AnalyticsSettings } from "../settings.js";
 import { historyBackfilling, historyDue, runHistoryStep, type HistoryPass } from "./history.js";
+import { readRanges, readsDue, readsMissing, type ReadSnapshot } from "./reads.js";
 import { olderDue, olderSettled, runOlderStep, type OlderPass } from "./older.js";
 import { addDays, backfillWindow, enumerateDays, syncWindow, utcDay, UNSAMPLED_WINDOW_DAYS, type Day } from "./window.js";
 
@@ -126,13 +127,17 @@ export interface SyncState {
 	history?: HistoryPass;
 	/** History steps taken in a row, counted while `lastWork` says the last slot was one. */
 	historyRun?: number;
+	/** Read-through, as the last read of the read event left it. */
+	reads?: ReadSnapshot;
+	/** The chained run scheduled last while catching up: its task and when it is due. */
+	chain?: { next: string; at: string };
 	/**
 	 * What the last non-overview slot did. A repair walk or the older pass
 	 * takes every other slot, never two in a row, so view counts keep
 	 * updating while they run. So does the history pass, except while it
 	 * is catching up (`HISTORY_BACKFILL_RUN`).
 	 */
-	lastWork?: "index" | "older" | "history" | "paths";
+	lastWork?: "index" | "older" | "history" | "reads" | "paths";
 	/** The provider whose numbers are in storage. */
 	provider?: ProviderId;
 	/** True once the first overview has pulled the provider's exact window. */
@@ -165,6 +170,10 @@ const OLDER_CALLS = 7;
  * ten, less the state read, the settings read and the state write.
  */
 const HISTORY_CALLS = 7;
+
+/** The most paths a paths tick reads: three reads of 98 ids over the eight days of the window. */
+const MAX_PATHS_PER_TICK = 36;
+const PATHS_PER_READ = 12;
 
 /**
  * History steps in a row while the pass still has earlier days to read,
@@ -291,13 +300,18 @@ export function buildProvider(ctx: PluginContext, settings: AnalyticsSettings): 
  *
  * `overview` runs the overview phase whatever the alternation says: a
  * Refresh is asked for to update the totals, which only that phase reads.
+ *
+ * `catchUp` names the chained one-shot task that started this run (see
+ * `CATCH_UP_TASKS`). While the plugin is catching up, a run in a paths
+ * slot keeps one call back and spends it scheduling the next run a little
+ * under a minute later, instead of leaving the work to the next sync.
  */
 export async function runSync(
 	ctx: PluginContext,
 	now: Date = new Date(),
-	options: { overview?: boolean } = {},
+	options: { overview?: boolean; catchUp?: string } = {},
 ): Promise<SyncOutcome> {
-	const state = await readState(ctx);
+	let state = await readState(ctx);
 	const result = await readSettings(ctx);
 
 	// Numbers from one provider must never be read as another's: demo data
@@ -317,6 +331,8 @@ export async function runSync(
 	}
 
 	const settings = result.settings;
+	// Turned off, read-through leaves nothing behind for a page to show.
+	if (!settings.reads && state.reads) state = { ...state, reads: undefined };
 	const provider = buildProvider(ctx, settings);
 	if (!provider) {
 		const { error, problem } = failure("noNetwork");
@@ -330,17 +346,45 @@ export async function runSync(
 		return await suggestSite(ctx, provider, state, now);
 	}
 
-	if (options.overview || state.phase !== "paths") return await runOverviewPhase(ctx, provider, state, now);
+	// A chained run always takes a paths slot: the recurring sync, which
+	// finds the phase set back to "overview" by every paths slot, keeps the
+	// overview at its own interval.
+	const chain = chainFor(state, settings, provider, now, options, Boolean(ctx.cron));
+	if (chain) state = { ...state, chain: { next: chain.next, at: chain.at } };
+	const reserve = chain ? 1 : 0;
 
+	if (options.overview || (!chain && state.phase !== "paths")) return await runOverviewPhase(ctx, provider, state, now);
+
+	const outcome = await runSlot(ctx, provider, settings, state, now, reserve);
+	const after = lastWritten.get(ctx);
+	if (chain && ctx.cron && outcome.ok && after && catchingUp(after, settings, provider, now)) {
+		await ctx.cron.schedule(chain.next, { schedule: chain.at });
+	}
+	return outcome;
+}
+
+/** One paths slot: the index walk, the background passes, or the paths tick. */
+async function runSlot(
+	ctx: PluginContext,
+	provider: Provider,
+	settings: AnalyticsSettings,
+	state: SyncState,
+	now: Date,
+	reserve: number,
+): Promise<SyncOutcome> {
 	// Catching up on content that predates the plugin comes first: the
 	// paths phase can only ask about paths the index already knows.
-	if (!state.indexComplete) return await runIndexPhase(ctx, state, now);
+	if (!state.indexComplete) return await runIndexPhase(ctx, state, now, reserve);
 
-	if (state.lastWork !== "index" && state.lastWork !== "older" && state.lastWork !== "history") {
-		if (indexOutdated(state)) return await runIndexPhase(ctx, state, now);
-		if (olderDue(state.older, utcDay(now))) return await runOlderPhase(ctx, state, now);
+	const background = ["index", "older", "history", "reads"] as Array<SyncState["lastWork"]>;
+	if (!background.includes(state.lastWork)) {
+		if (indexOutdated(state)) return await runIndexPhase(ctx, state, now, reserve);
+		if (olderDue(state.older, utcDay(now))) return await runOlderPhase(ctx, state, now, reserve);
+		if (provider.readThrough && settings.reads && readsDue(state.reads, settings.reads, now, utcDay(now))) {
+			return await runReadsPhase(ctx, provider, settings, state, now);
+		}
 		if (isWidePull(provider) && historyDue(state.history, utcDay(now), historyFloor(settings, now))) {
-			return await runHistoryPhase(ctx, provider, settings, state, now);
+			return await runHistoryPhase(ctx, provider, settings, state, now, reserve);
 		}
 	} else if (
 		isWidePull(provider) &&
@@ -351,10 +395,76 @@ export async function runSync(
 		// Still catching up on earlier days: the pass keeps the slot. The
 		// index walk and the older pass wait for the slot after a paths tick,
 		// where they come first as always.
-		return await runHistoryPhase(ctx, provider, settings, state, now);
+		return await runHistoryPhase(ctx, provider, settings, state, now, reserve);
 	}
 
-	return await runPathsPhase(ctx, provider, settings, state, now);
+	return await runPathsPhase(ctx, provider, settings, state, now, reserve);
+}
+
+/**
+ * The chained one-shot tasks. A one-shot is deleted once its run returns,
+ * and scheduling a task again updates its row in place, so a run that
+ * scheduled its own name would see the next run deleted with it. Two
+ * names taking turns avoid that. They are not Refresh's name, because a
+ * Refresh runs the overview, and a chained run must not.
+ */
+export const CATCH_UP_TASKS = ["catchup-a", "catchup-b"] as const;
+
+/**
+ * How long after a chained run the next one is due. A little under a
+ * minute, so that on Workers, where one-shots run with the Cron Trigger,
+ * a run started by one every-minute trigger is due by the next.
+ */
+export const CATCH_UP_DELAY_MS = 50_000;
+
+/**
+ * How long a scheduled chained run counts as pending. A run that never
+ * happened, after a failure or a lost trigger, stops blocking a new chain
+ * once this has passed.
+ */
+const CATCH_UP_PENDING_MS = 5 * 60_000;
+
+/**
+ * Is there work a run a minute from now would do sooner than the sync?
+ *
+ * Derived from the stored state alone: the first index walk, a repair
+ * walk, the history pass short of the retention limit, and read-through
+ * never read under the current settings. The routine work a caught-up
+ * site has (today's numbers, the day that just closed, the daily older
+ * pass, refreshing read-through) waits for the sync.
+ */
+export function catchingUp(state: SyncState, settings: AnalyticsSettings, provider: Provider, now: Date): boolean {
+	if (!state.indexComplete || indexOutdated(state)) return true;
+	if (isWidePull(provider) && historyBackfilling(state.history, historyFloor(settings, now))) return true;
+	if (provider.readThrough && settings.reads && readsMissing(state.reads, settings.reads)) return true;
+	return false;
+}
+
+/**
+ * Whether this run continues or starts a chain, and the task and time it
+ * would schedule. A chained run always continues one. A sync in a paths
+ * slot starts one only when no chained run is pending, so a chain is never
+ * doubled: the state remembers the run it scheduled last.
+ */
+function chainFor(
+	state: SyncState,
+	settings: AnalyticsSettings,
+	provider: Provider,
+	now: Date,
+	options: { overview?: boolean; catchUp?: string },
+	cron: boolean,
+): { next: string; at: string } | null {
+	if (options.overview || !cron) return null;
+	if (!catchingUp(state, settings, provider, now)) return null;
+	const at = new Date(now.getTime() + CATCH_UP_DELAY_MS).toISOString();
+	if (options.catchUp) {
+		const next = options.catchUp === CATCH_UP_TASKS[0] ? CATCH_UP_TASKS[1] : CATCH_UP_TASKS[0];
+		return { next, at };
+	}
+	if (state.phase !== "paths") return null;
+	const pending = state.chain && now.getTime() < Date.parse(state.chain.at) + CATCH_UP_PENDING_MS;
+	if (pending) return null;
+	return { next: state.chain?.next ?? CATCH_UP_TASKS[0], at };
 }
 
 /** Does the provider answer one day per request, so that closed days arrive through the history pass? */
@@ -454,10 +564,12 @@ async function runOverviewPhase(
  * getPublicUrl per entry (three), entries.getMany, entries.putMany, kv.set
  * — ten. The cursor is saved with the state, after the page's rows.
  */
-async function runIndexPhase(ctx: PluginContext, state: SyncState, now: Date): Promise<SyncOutcome> {
+async function runIndexPhase(ctx: PluginContext, state: SyncState, now: Date, reserve = 0): Promise<SyncOutcome> {
 	let result;
 	try {
-		result = await bootstrapIndex(ctx, state.index, now);
+		// Each entry on the page costs a URL lookup, so a call held back for a
+		// chained run comes off the page.
+		result = await bootstrapIndex(ctx, state.index, now, INDEX_PAGE_SIZE - reserve);
 	} catch (error) {
 		// Recorded as done, so a repair walk that keeps failing still leaves
 		// every other slot to the paths tick.
@@ -488,10 +600,10 @@ async function runIndexPhase(ctx: PluginContext, state: SyncState, now: Date): P
  * Calls: kv.get, settings.list, then at most seven on storage (daily
  * pages, entries.getMany, entries.putMany), kv.set.
  */
-async function runOlderPhase(ctx: PluginContext, state: SyncState, now: Date): Promise<SyncOutcome> {
+async function runOlderPhase(ctx: PluginContext, state: SyncState, now: Date, reserve = 0): Promise<SyncOutcome> {
 	let result;
 	try {
-		result = await runOlderStep(ctx, state.older, utcDay(now), OLDER_CALLS);
+		result = await runOlderStep(ctx, state.older, utcDay(now), OLDER_CALLS - reserve);
 	} catch (error) {
 		const summing = failure("summingFailed", { detail: String(error) });
 		return await fail(ctx, { ...state, lastWork: "older" }, "paths", summing.error, now, summing.problem);
@@ -510,6 +622,46 @@ async function runOlderPhase(ctx: PluginContext, state: SyncState, now: Date): P
 }
 
 /**
+ * Read the read event into a fresh snapshot.
+ *
+ * Calls: kv.get, settings.list, two requests per depth (six at most, see
+ * `MAX_READ_DEPTHS`), kv.set. It runs when the snapshot is due, at most
+ * every six hours and once each UTC day, in a slot after a paths tick:
+ * one paths slot in twelve at the default interval, and fewer as the
+ * interval grows.
+ */
+async function runReadsPhase(
+	ctx: PluginContext,
+	provider: Provider,
+	settings: AnalyticsSettings,
+	state: SyncState,
+	now: Date,
+): Promise<SyncOutcome> {
+	const spec = settings.reads!;
+	const today = utcDay(now);
+	const ranges = readRanges(today);
+	const res = await provider.readThrough!(spec, ranges);
+	if (!res.ok) return await fail(ctx, { ...state, lastWork: "reads" }, "paths", res.error, now, res.problem);
+
+	await writeState(ctx, {
+		...state,
+		phase: "overview",
+		lastWork: "reads",
+		lastSync: now.toISOString(),
+		...clearedErrors(state, "paths"),
+		reads: {
+			at: now.toISOString(),
+			...spec,
+			since: ranges.entries.since,
+			byEntry: res.value.byEntry,
+			daily: res.value.daily,
+			partial: res.value.partial,
+		},
+	});
+	return { phase: "paths", ok: true, written: 0, skipped: 0 };
+}
+
+/**
  * One step of a wide-pull provider's history pass.
  *
  * Calls: kv.get, settings.list, then at most seven on the provider and on
@@ -521,6 +673,7 @@ async function runHistoryPhase(
 	settings: AnalyticsSettings,
 	state: SyncState,
 	now: Date,
+	reserve = 0,
 ): Promise<SyncOutcome> {
 	// Recorded as done either way, and counted, so a pass that keeps failing
 	// still leaves the paths tick its slots.
@@ -534,7 +687,7 @@ async function runHistoryPhase(
 			state.history,
 			utcDay(now),
 			historyFloor(settings, now),
-			HISTORY_CALLS,
+			HISTORY_CALLS - reserve,
 			now,
 		);
 	} catch (error) {
@@ -563,6 +716,7 @@ async function runPathsPhase(
 	settings: AnalyticsSettings,
 	state: SyncState,
 	now: Date,
+	reserve = 0,
 ): Promise<SyncOutcome> {
 	const entries = entriesStore(ctx);
 	const daily = dailyStore(ctx);
@@ -583,7 +737,9 @@ async function runPathsPhase(
 	// survives across ticks.
 	const page = await entries.query({
 		orderBy: { path: "asc" },
-		limit: settings.chunkSize,
+		// A call held back for a chained run takes one of the three reads of
+		// the window, which is twelve paths of the 36.
+		limit: Math.min(settings.chunkSize, MAX_PATHS_PER_TICK - reserve * PATHS_PER_READ),
 		...(state.cursor ? { cursor: state.cursor } : {}),
 	});
 
@@ -766,6 +922,7 @@ async function writeRollup(ctx: PluginContext, overview: Overview, today: Day, n
 			date: row.date,
 			pageviews: row.pageviews,
 			visits: row.visits,
+			...engagementOf(row),
 			sampleInterval: row.sampleInterval,
 			fetchedAt: now.toISOString(),
 		});
@@ -891,6 +1048,10 @@ function clearedErrors(state: SyncState, phase: SyncState["phase"]): Partial<Syn
 	return { lastError: undefined, lastProblem: undefined, lastErrorAt: undefined, lastErrorPhase: undefined };
 }
 
+/** The state each context wrote last, so a run can tell what it left without reading it back. */
+const lastWritten = new WeakMap<PluginContext, SyncState>();
+
 async function writeState(ctx: PluginContext, state: SyncState): Promise<void> {
 	await ctx.kv.set(STATE_KEY, state);
+	lastWritten.set(ctx, state);
 }

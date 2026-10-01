@@ -3,6 +3,7 @@ import type { PluginRuntimeTestHost } from "@emdash-cms/plugin-test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DailyRow, EntryRow, RollupRow } from "../src/store/rows.js";
+import { HISTORY_VERSION } from "../src/sync/history.js";
 import type { SyncState } from "../src/sync/scheduler.js";
 import { addDays } from "../src/sync/window.js";
 import { RANGE_ACTION, SETUP_ACTION } from "../src/ui/page.js";
@@ -10,6 +11,7 @@ import {
 	daysBack,
 	newHost,
 	NOW,
+	pendingChain,
 	respondUmamiOverview,
 	respondUmamiWebsites,
 	seedDaily,
@@ -47,7 +49,9 @@ const caughtUp: SyncState = {
 	provider: "umami",
 	phase: "paths",
 	lastWork: "paths",
-	history: { since: addDays(TODAY, -90), until: YESTERDAY },
+	history: { since: addDays(TODAY, -90), until: YESTERDAY, version: HISTORY_VERSION },
+	// Keeps these ticks unchained; chained runs have tests of their own.
+	chain: pendingChain,
 };
 
 async function state(runtime: PluginRuntimeTestHost) {
@@ -213,7 +217,7 @@ describe("the history pass", () => {
 		expect(await state(host)).toMatchObject({
 			phase: "overview",
 			lastWork: "history",
-			history: { since: YESTERDAY, until: YESTERDAY },
+			history: { since: YESTERDAY, until: YESTERDAY, version: HISTORY_VERSION },
 		});
 
 		const before = addDays(TODAY, -2);
@@ -222,7 +226,7 @@ describe("the history pass", () => {
 		await host.http.respond(umamiUrl.stats(before), umamiStats(9, 6));
 		await tick(host)();
 		expect(await rollup(host, before)).toMatchObject({ pageviews: 9, visits: 6 });
-		expect((await state(host)).history).toEqual({ since: before, until: YESTERDAY });
+		expect((await state(host)).history).toEqual({ since: before, until: YESTERDAY, version: HISTORY_VERSION });
 
 		// Five days without a page view cost one request each and no totals
 		// request, and fit one step.
@@ -231,7 +235,7 @@ describe("the history pass", () => {
 		for (const day of daysBack(8).slice(3)) await host.http.respond(umamiUrl.dayPaths(day), umamiRows([]));
 		await tick(host)();
 		expect(host.http.requests()).toHaveLength(5);
-		expect((await state(host)).history).toEqual({ since: addDays(TODAY, -7), until: YESTERDAY });
+		expect((await state(host)).history).toEqual({ since: addDays(TODAY, -7), until: YESTERDAY, version: HISTORY_VERSION });
 		expect(await rollup(host, addDays(TODAY, -4))).toBeNull();
 
 		// Caught up: the slot goes back to the paths tick, which has no
@@ -240,7 +244,7 @@ describe("the history pass", () => {
 		host.http.clear();
 		await tick(host)();
 		expect(host.http.requests()).toHaveLength(0);
-		expect(await state(host)).toMatchObject({ lastWork: "paths", history: { since: addDays(TODAY, -7), until: YESTERDAY } });
+		expect(await state(host)).toMatchObject({ lastWork: "paths", history: { since: addDays(TODAY, -7), until: YESTERDAY, version: HISTORY_VERSION } });
 	});
 
 	/** Give the next tick the paths slot, leaving what the last slot did as the tick recorded it. */
@@ -267,7 +271,7 @@ describe("the history pass", () => {
 		}
 
 		expect(work).toEqual(["history", "history", "history", "paths", "history", "history", "history", "paths"]);
-		expect((await state(host)).history).toEqual({ since: addDays(TODAY, -6), until: YESTERDAY });
+		expect((await state(host)).history).toEqual({ since: addDays(TODAY, -6), until: YESTERDAY, version: HISTORY_VERSION });
 		// The paths ticks in between put the days read so far into the entry.
 		expect(await host.inspect.storage.get("entries", "/a/")).toMatchObject({ views7: 1 + 6 * 3 });
 	});
@@ -278,7 +282,7 @@ describe("the history pass", () => {
 		host = await newHost("umami");
 		await seedEntries(host, ["/a/"]);
 		const behind = addDays(TODAY, -2);
-		await setState(host, { ...caughtUp, history: { since: addDays(TODAY, -90), until: addDays(TODAY, -3) } });
+		await setState(host, { ...caughtUp, history: { since: addDays(TODAY, -90), until: addDays(TODAY, -3), version: HISTORY_VERSION } });
 		const work: Array<SyncState["lastWork"]> = [];
 
 		for (let slot = 0; slot < 4; slot++) {
@@ -294,7 +298,7 @@ describe("the history pass", () => {
 		}
 
 		expect(work).toEqual(["history", "paths", "history", "paths"]);
-		expect((await state(host)).history).toEqual({ since: addDays(TODAY, -90), until: YESTERDAY });
+		expect((await state(host)).history).toEqual({ since: addDays(TODAY, -90), until: YESTERDAY, version: HISTORY_VERSION });
 	});
 
 	it("gives the paths tick its turn even when every step fails", async () => {
@@ -326,7 +330,7 @@ describe("the history pass", () => {
 		const partial = { pageviews: 3, visits: 2, sampleInterval: 1, fetchedAt: NOW.toISOString() };
 		await host.fixtures.plugin.storage("daily", `${day}|/a/`, { date: day, path: "/a/", ...partial });
 		await host.fixtures.plugin.storage("rollup", day, { date: day, ...partial });
-		await setState(host, { ...caughtUp, history: { since: addDays(TODAY, -2), until: YESTERDAY } });
+		await setState(host, { ...caughtUp, history: { since: addDays(TODAY, -2), until: YESTERDAY, version: HISTORY_VERSION } });
 		await host.http.respond(umamiUrl.dayPaths(day), umamiRows([["/a/", 11, 7]]));
 		await host.http.respond(umamiUrl.stats(day), umamiStats(11, 7));
 
@@ -349,7 +353,7 @@ describe("the history pass", () => {
 		await tick(host)();
 
 		// 196 rows compared and written, the day not finished, no totals yet.
-		expect((await state(host)).history).toEqual({ partial: { day: YESTERDAY, after: "/p-195/" } });
+		expect((await state(host)).history).toEqual({ version: HISTORY_VERSION, partial: { day: YESTERDAY, after: "/p-195/" } });
 		expect(await daily(host, YESTERDAY, "/p-195/")).not.toBeNull();
 		expect(await daily(host, YESTERDAY, "/p-196/")).toBeNull();
 		expect(await rollup(host, YESTERDAY)).toBeNull();
@@ -359,7 +363,7 @@ describe("the history pass", () => {
 		await host.http.respond(umamiUrl.stats(YESTERDAY), umamiStats(500, 250));
 		await tick(host)();
 
-		expect((await state(host)).history).toEqual({ since: YESTERDAY, until: YESTERDAY });
+		expect((await state(host)).history).toEqual({ since: YESTERDAY, until: YESTERDAY, version: HISTORY_VERSION });
 		const stored = (await host.inspect.storage.list<DailyRow>("daily")).filter(
 			(row) => row.data.date === YESTERDAY && row.data.path.startsWith("/p-"),
 		);

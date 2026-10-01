@@ -162,8 +162,8 @@ describe("the overview", () => {
 		expect(res.ok).toBe(true);
 		if (!res.ok) return;
 		expect(res.value.series).toEqual([
-			{ date: "2026-09-19", pageviews: 70, visits: 30, uniques: 21, sampleInterval: 1 },
-			{ date: "2026-09-20", pageviews: 40, visits: 12, uniques: 9, sampleInterval: 1 },
+			{ date: "2026-09-19", pageviews: 70, visits: 30, uniques: 21, bounces: 0, totaltime: 0, sampleInterval: 1 },
+			{ date: "2026-09-20", pageviews: 40, visits: 12, uniques: 9, bounces: 0, totaltime: 0, sampleInterval: 1 },
 		]);
 		expect(res.value.totals).toEqual({ pageviews: 110, visits: 42, sampleInterval: 1 });
 		expect(calls.filter((call) => kind(call) === "stats").map(dayOf).sort()).toEqual(["2026-09-19", "2026-09-20"]);
@@ -292,11 +292,11 @@ describe("a day's paths", () => {
 });
 
 describe("a day's totals", () => {
-	it("maps visits to visits and visitors to uniques", async () => {
-		const { fetch } = recorder(() => ({ body: stats(31, 14, 11) }));
+	it("maps visits to visits, visitors to uniques, and keeps bounces and visit time", async () => {
+		const { fetch } = recorder(() => ({ body: { ...stats(31, 14, 11), bounces: 9, totaltime: 1162 } }));
 		expect(await provider(fetch).dayTotals?.("2026-09-18")).toEqual({
 			ok: true,
-			value: { date: "2026-09-18", pageviews: 31, visits: 14, uniques: 11, sampleInterval: 1 },
+			value: { date: "2026-09-18", pageviews: 31, visits: 14, uniques: 11, bounces: 9, totaltime: 1162, sampleInterval: 1 },
 		});
 	});
 
@@ -615,5 +615,86 @@ describe("page views by event data", () => {
 		const res = await provider(fetch).overview(RANGE);
 		expect(calls.some((call) => call.url.pathname.endsWith("/event-data/events"))).toBe(false);
 		if (res.ok) expect(res.value.properties).toBeUndefined();
+	});
+});
+
+describe("read-through", () => {
+	const spec = { event: "post_read", entryProperty: "post", depthProperty: "depth", depths: ["half", "end"] };
+	const ranges = {
+		entries: { since: "2026-09-01", until: "2026-09-30" },
+		daily: { since: "2026-07-03", until: "2026-09-30" },
+	};
+	const answer = (call: Call): Reply => {
+		const depth = call.url.searchParams.get("epf0")?.split(".").pop();
+		if (call.url.pathname.endsWith("/event-data/values")) {
+			return { body: depth === "half" ? [{ value: "a-post", total: 30 }, { value: "/blog/b-post", total: 21 }] : [{ value: "a-post", total: 43 }] };
+		}
+		return {
+			body:
+				depth === "half"
+					? [{ x: "post_read", t: "2026-09-29T00:00:00Z", y: 20 }, { x: "post_read", t: "2026-09-30T00:00:00Z", y: 31 }]
+					: [{ x: "post_read", t: "2026-09-30T00:00:00Z", y: 43 }],
+		};
+	};
+
+	it("asks two documented custom-event routes per depth, narrowed to the depth", async () => {
+		const { calls, fetch } = recorder(answer);
+		await provider(fetch).readThrough?.(spec, ranges);
+		expect(calls).toHaveLength(4);
+		const values = calls.filter((call) => call.url.pathname.endsWith("/event-data/values"));
+		const series = calls.filter((call) => call.url.pathname.endsWith("/events/series"));
+		expect(values.map((call) => call.url.searchParams.get("epf0")).sort()).toEqual(["1.eq.depth.end", "1.eq.depth.half"]);
+		expect(Object.fromEntries(values[0]!.url.searchParams)).toMatchObject({
+			startAt: String(Date.parse("2026-09-01T00:00:00.000Z")),
+			eventName: "post_read",
+			propertyName: "post",
+			// The site's own filters still apply: reads on a preview host do not count.
+			hostname: "eq.example.com,www.example.com",
+		});
+		expect(Object.fromEntries(series[0]!.url.searchParams)).toMatchObject({
+			startAt: String(Date.parse("2026-07-03T00:00:00.000Z")),
+			unit: "day",
+			timezone: "UTC",
+			event: "eq.post_read",
+		});
+	});
+
+	it("counts reads per entry and per day, in the settings' depth order, normalizing a path", async () => {
+		const { fetch } = recorder(answer);
+		const res = await provider(fetch, { trailingSlash: "always" }).readThrough?.(spec, ranges);
+		expect(res).toEqual({
+			ok: true,
+			value: {
+				byEntry: { "a-post": [30, 43], "/blog/b-post/": [21, 0] },
+				daily: [
+					{ date: "2026-09-29", counts: [20, 0] },
+					{ date: "2026-09-30", counts: [31, 43] },
+				],
+				partial: false,
+			},
+		});
+	});
+
+	it("says when a per-entry list reached the route's 100 rows, so the rest are missing, not unread", async () => {
+		const { fetch } = recorder((call) =>
+			call.url.pathname.endsWith("/event-data/values")
+				? { body: Array.from({ length: 100 }, (_, i) => ({ value: `p-${i}`, total: 1 })) }
+				: { body: [] },
+		);
+		const res = await provider(fetch).readThrough?.(spec, ranges);
+		expect(res?.ok && res.value.partial).toBe(true);
+	});
+
+	it("escapes a dot in the depth property, which would split the filter", async () => {
+		const { calls, fetch } = recorder(() => ({ body: [] }));
+		await provider(fetch).readThrough?.({ ...spec, depthProperty: "read.depth", depths: ["end"] }, ranges);
+		expect(calls[0]!.url.searchParams.get("epf0")).toBe("1.eq.read%2Edepth.end");
+	});
+
+	it("fails as a whole when one request fails", async () => {
+		const { fetch } = recorder((call) =>
+			call.url.pathname.endsWith("/events/series") ? { body: "Too many requests", status: 429 } : { body: [] },
+		);
+		expect(await provider(fetch).readThrough?.(spec, ranges)).toMatchObject({ ok: false, problem: { key: "umamiRateLimited" } });
 	});
 });

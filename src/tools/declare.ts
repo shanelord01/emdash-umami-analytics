@@ -178,7 +178,8 @@ export function mcpTools(): Record<string, SandboxedMcpTool> {
 				"Visits and page views for the whole site over the last 7, 30 or 90 days, with the period of the same length before it for comparison. " +
 				"Use it for overall traffic and its trend. " +
 				"previous is null when stored history does not reach back far enough to compare. " +
-				"estimated is true when the provider sampled a day, so the numbers are extrapolated; provisional is true when today, still counting, is included.",
+				"estimated is true when the provider sampled a day, so the numbers are extrapolated; provisional is true when today, still counting, is included. " +
+				"engagement is the bounce rate, average visit and page views per visit over the days that carry them, from engagement.since; it is null when no day in the window does.",
 			route: TOOL_ROUTES.siteTotals,
 			input: z.object({
 				days: z
@@ -199,6 +200,18 @@ export function mcpTools(): Record<string, SandboxedMcpTool> {
 						visits: z.number(),
 						pageviews: z.number(),
 						estimated: z.boolean(),
+					})
+					.nullable(),
+				engagement: z
+					.object({
+						since: day.describe("The first day of the window that carries engagement. Days stored before it do not."),
+						bounceRate: z.number().describe("Visits with a single page view, as a share of visits, from 0 to 1."),
+						averageVisitSeconds: z.number(),
+						pagesPerVisit: z.number(),
+						previous: z
+							.object({ bounceRate: z.number(), averageVisitSeconds: z.number(), pagesPerVisit: z.number() })
+							.nullable()
+							.describe("The period before, or null when stored engagement does not reach back to its start."),
 					})
 					.nullable(),
 				historySince: day

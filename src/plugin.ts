@@ -30,6 +30,7 @@ import {
 	requestRefresh,
 	runReconcile,
 	runSync,
+	CATCH_UP_TASKS,
 	RECONCILE_TASK,
 	REFRESH_TASK,
 	SYNC_TASK,
@@ -76,6 +77,11 @@ const plugin: SandboxedPlugin = {
 			handler: async (event, ctx) => {
 				if (event.name === SYNC_TASK) {
 					await runSync(ctx);
+					return;
+				}
+
+				if ((CATCH_UP_TASKS as readonly string[]).includes(event.name)) {
+					await runSync(ctx, new Date(), { catchUp: event.name });
 					return;
 				}
 
