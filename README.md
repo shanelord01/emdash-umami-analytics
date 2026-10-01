@@ -12,6 +12,17 @@ is untested: it follows Umami's published API, and has not been run
 against a Cloud account. If you use it with Umami Cloud, please report
 what you find in the repository's issues.
 
+## What's new
+
+**0.1.1, 1 October 2026**
+- Views by category on the Analytics page, from the event data your site
+  attaches to its page views. Section, tags or byline can be added in
+  settings.
+
+**0.1.0, 30 September 2026**
+- First release: Umami traffic on the dashboard, an Analytics page with a
+  setup check, views per entry, an editor panel and MCP tools.
+
 ## What it adds to the admin
 
 | Where | What you see |
