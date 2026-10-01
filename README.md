@@ -14,6 +14,13 @@ what you find in the repository's issues.
 
 ## What's new
 
+**0.1.2, 1 October 2026**
+- Engagement: bounce rate, average visit and pages per visit beside the
+  totals, with charts on the Analytics page.
+- Read-through: how many readers reach halfway and the end of each post,
+  for sites that send a read event.
+- Faster catch-up after install: a few hours instead of a few days.
+
 **0.1.1, 1 October 2026**
 - Views by category on the Analytics page, from the event data your site
   attaches to its page views. Section, tags or byline can be added in
@@ -27,10 +34,10 @@ what you find in the repository's issues.
 
 | Where | What you see |
 |---|---|
-| Dashboard | A Traffic card: visits and page views for the last seven days against the week before, the five most viewed pages with their entries, and the time of the last sync |
-| Plugins > Analytics | Visits and page views over 7, 30 or 90 days with a daily chart, top entries, referrers and countries, page views by the event data your site attaches (by category, to start with), a link to the website in Umami, and a setup check |
-| Plugins > Analytics per entry | Every published entry with its page views over 7 and 30 days, sortable, by collection or across all of them. Translated content can be shown with its languages combined |
-| Entry editor | An Analytics panel with that entry's 7 and 30 day page views and the path they are counted at |
+| Dashboard | A Traffic card: visits, page views and engagement for the last seven days against the week before, the five most viewed pages with their entries, and the time of the last sync |
+| Plugins > Analytics | Visits and page views over 7, 30 or 90 days with a daily chart, bounce rate and visit time with a chart each, top entries, referrers and countries, page views by the event data your site attaches (by category, to start with), reads by day, a link to the website in Umami, and a setup check |
+| Plugins > Analytics per entry | Every published entry with its page views over 7 and 30 days and its read-through, sortable, by collection or across all of them. Translated content can be shown with its languages combined |
+| Entry editor | An Analytics panel with that entry's 7 and 30 day page views, how far readers get, and the path they are counted at |
 | MCP | Four read-only tools that give an AI agent the same numbers |
 
 ## What you need
@@ -87,6 +94,7 @@ Open Plugins in the admin, then the plugin's settings.
 | Sync every | 15 minutes by default |
 | Keep daily rows for | 90 days by default, 400 at most. The plugin reads this far back from Umami after install |
 | Paths per sync tick | 36 by default. Lower it to write fewer database rows per day |
+| Read-through event, entry property, depth property, depths | Empty by default, which turns read-through off. See "Read-through" below |
 | Views by event data | `category` by default. The names of up to three event data properties your site attaches to its page views, separated by commas, for example `category, section`. Leave it empty to show none. See "Views by event data" below |
 
 After saving, open Plugins > Analytics and select Check setup. It runs
@@ -101,12 +109,12 @@ The Umami API has to be reachable on a public hostname. EmDash does not
 let a plugin request a private address, so `localhost`, a LAN address or
 a VPN-only name will not work.
 
-If a sign-in proxy sits in front of your Umami, let the six endpoints
+If a sign-in proxy sits in front of your Umami, let the eight endpoints
 below through without it. Umami checks the API key on each of them.
 
 ## What the plugin requests
 
-Six `GET` endpoints of the Umami API, each with the API key as a Bearer
+Eight `GET` endpoints of the Umami API, each with the API key as a Bearer
 token.
 
 | Endpoint | Used for |
@@ -114,6 +122,8 @@ token.
 | `/websites/{id}/stats` | one day's page views, visits and visitors |
 | `/websites/{id}/metrics/expanded` | pages, referrers, countries and hostnames |
 | `/websites/{id}/event-data/events` | page views by event data value, when the Analytics page opens |
+| `/websites/{id}/event-data/values` | read events per entry, during the sync, only with read-through on |
+| `/websites/{id}/events/series` | read events per day, during the sync, only with read-through on |
 | `/websites` | listing websites, only while no website ID is set or during a setup check |
 | `/me/teams` | listing the key's teams, only while no website ID is set |
 | `/teams/{id}/websites` | listing a team's websites, only while no website ID is set |
@@ -128,10 +138,22 @@ time and stores what it reads in your site's database.
 
 Today is read on every sync and is labelled as still counting. Earlier
 days are read once each, newest first, back to the Keep daily rows for
-setting. At the default sync interval that is about three days every two
-hours, so 90 days of history arrive in about two and a half days and the
-chart grows backwards while it does. Per-entry views over 7 and 30 days
-are sums of those stored days plus today.
+setting, and the chart grows backwards while they arrive. Per-entry views
+over 7 and 30 days are sums of those stored days plus today.
+
+While the plugin is catching up (matching your entries to their pages,
+reading earlier days, or reading read-through for the first time), each
+sync step starts the next one about a minute later instead of waiting for
+the next scheduled sync. On Node, 90 days of history and a site of 100
+entries take about two hours. On Cloudflare Workers a step started this
+way waits for the site's next Cron Trigger, so catching up there runs at
+the trigger's pace. Once caught up, the plugin syncs at the Sync every
+interval only.
+
+Engagement (bounce rate, average visit and pages per visit) comes with
+each day's totals, so it costs no extra request. Days stored before
+version 0.1.2 have none until the plugin reads them again, and are left
+out of the figures, never counted as zero.
 
 The Analytics page also asks Umami directly each time it opens, so it
 shows numbers from the first minute after setup.
@@ -192,6 +214,30 @@ its event data request with filters that select page views. If a later
 Umami release changes how those filters combine, the tables come back
 empty until the plugin is updated.
 
+## Read-through
+
+If your site sends a custom event as a reader reaches each part of an
+entry, the plugin shows how far readers get: on the Analytics per entry
+page beside each entry's 30-day views, in the editor panel as a bar per
+depth against the entry's views, and as reads by day on the Analytics
+page.
+
+Set the four Read-through settings to match your event, for example:
+
+| Setting | Example |
+|---|---|
+| Read-through event | `post_read` |
+| Read-through entry property | `post`, holding the entry's slug (the last part of its path) or its path |
+| Read-through depth property | `depth` |
+| Read-through depths | `half, end`, in reading order, up to three |
+
+Your site sends the event with the tracker, for example
+`umami.track("post_read", { post: "my-post", depth: "half" })` when a
+reader passes halfway. Send each depth once per visit.
+
+The sync reads the counts every six hours and stores them, so the pages
+and the panel ask Umami nothing. Per-entry counts cover the last 30 days.
+
 ## Demo data
 
 Set Data source to Demo data and select Refresh on the dashboard card.
@@ -219,9 +265,11 @@ every role and checks the permission when the card loads.
 | `top_entries` | The most viewed published entries over 7 or 30 days, optionally for one collection |
 | `unviewed_entries` | Published entries without a view in 7 or 30 days |
 | `entry_views` | One entry's 7 and 30 day views, found by ID or by path, with its translations |
-| `site_totals` | Site visits and page views over 7, 30 or 90 days against the period before |
+| `site_totals` | Site visits, page views and engagement over 7, 30 or 90 days against the period before |
 
 To use them, open the plugin under Plugins and turn on Agent access.
+EmDash turns it off again after an update that changes a tool, so check
+it after updating.
 EmDash lists each tool with the plugin's ID in front of its name. A token
 needs the `mcp:tools` scope, or the scope for this plugin alone, and its
 user needs to be an editor or admin.
@@ -254,8 +302,8 @@ Umami Cloud account, or wherever you host your own.
   The Analytics page reads them from Umami, and falls back to the last
   sync's week.
 - A views column in EmDash's content list.
-- Fast catch-up on large sites. Each sync step handles a few dozen entries
-  or one day of history.
+- Fast catch-up on Cloudflare Workers, where a step waits for the next
+  Cron Trigger.
 - Views by event data on the dashboard card, display names for the
   values, and tables limited by a second value (for example categories of
   blog posts only).
