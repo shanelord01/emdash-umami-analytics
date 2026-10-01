@@ -98,6 +98,7 @@ export async function bootstrapIndex(
 	ctx: PluginContext,
 	from: IndexCursor | undefined,
 	now: Date,
+	pageSize: number = INDEX_PAGE_SIZE,
 ): Promise<BootstrapResult> {
 	const done: BootstrapResult = { next: undefined, indexed: 0, repaired: 0, labels: {}, skipped: 0, complete: true };
 	const entries = entriesStore(ctx);
@@ -118,7 +119,7 @@ export async function bootstrapIndex(
 	// Drafts have no public URL, so listing them would spend a
 	// `getPublicUrl()` each to learn nothing.
 	const page = await ctx.content.list(collection, {
-		limit: INDEX_PAGE_SIZE,
+		limit: pageSize,
 		where: { status: "published" },
 		...(cursor ? { cursor } : {}),
 	});

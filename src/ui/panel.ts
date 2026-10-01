@@ -13,11 +13,12 @@
 
 import type { PluginContext } from "emdash/plugin";
 
-import { langOf, t } from "../i18n.js";
+import { langOf, t, type Lang } from "../i18n.js";
 import { entriesStore, BIND_LIMIT } from "../store/access.js";
 import { isPublished, type EntryRow } from "../store/rows.js";
+import { readsFor, type ReadSnapshot } from "../sync/reads.js";
 import type { SyncState } from "../sync/scheduler.js";
-import { actions, context, empty, link, stats, table, type AnalyticsBlock } from "./blocks.js";
+import { actions, context, empty, link, meter, stats, table, type AnalyticsBlock } from "./blocks.js";
 import { CONTENT_PATH } from "./content.js";
 import { formatCount } from "./format.js";
 import { statusLine } from "./status.js";
@@ -75,6 +76,8 @@ export function renderPanel(input: PanelInput): AnalyticsBlock[] {
 		]),
 	);
 
+	out.push(...readMeters(state.reads, current, lang));
+
 	if (translated) {
 		out.push(
 			table({
@@ -101,6 +104,29 @@ export function renderPanel(input: PanelInput): AnalyticsBlock[] {
 	out.push(context(notes.join(" · ")));
 	out.push(more);
 	return out;
+}
+
+/**
+ * One meter per depth: the entry's reads to that depth against its page
+ * views over the same 30 days. The bar fills as readers get further, so a
+ * short fill on the last depth is a post people leave early. Nothing while
+ * read-through is off, or when the snapshot has no reads for the entry.
+ */
+function readMeters(reads: ReadSnapshot | undefined, entry: EntryRow, lang: Lang): AnalyticsBlock[] {
+	const counts = readsFor(reads, entry.path);
+	if (!reads || !counts) return [];
+	const views = Math.max(entry.views30, ...counts);
+	return reads.depths.map((depth, i) =>
+		meter({
+			label: t(lang, "panelReadTo", { depth }),
+			value: counts[i] ?? 0,
+			max: Math.max(views, 1),
+			customValue: t(lang, "panelReadOf", {
+				reads: formatCount(counts[i] ?? 0, lang),
+				views: formatCount(entry.views30, lang),
+			}),
+		}),
+	);
 }
 
 function sum(rows: EntryRow[]): number {

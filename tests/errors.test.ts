@@ -1,6 +1,7 @@
 import type { PluginRuntimeTestHost } from "@emdash-cms/plugin-test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { HISTORY_VERSION } from "../src/sync/history.js";
 import type { SyncState } from "../src/sync/scheduler.js";
 import { addDays } from "../src/sync/window.js";
 import { newHost, respondUmamiOverview, seedEntries, setState, synced, TODAY, umamiRows, umamiUrl } from "./host.js";
@@ -29,7 +30,7 @@ describe("a failed tick", () => {
 			provider: "umami",
 			phase: "paths",
 			lastWork: "paths",
-			history: { since: addDays(TODAY, -90), until: addDays(TODAY, -1) },
+			history: { since: addDays(TODAY, -90), until: addDays(TODAY, -1), version: HISTORY_VERSION },
 		});
 
 		await host.http.respond(umamiUrl.dayPaths(TODAY), new Response("upstream down", { status: 502 }));

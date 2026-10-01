@@ -1,6 +1,7 @@
 import type { PluginRuntimeTestHost } from "@emdash-cms/plugin-test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { HISTORY_VERSION } from "../src/sync/history.js";
 import { WAITING_KEY, type SyncState } from "../src/sync/scheduler.js";
 import { addDays } from "../src/sync/window.js";
 import { PAGE_REFRESH_ACTION, RANGE_ACTION, SETUP_ACTION } from "../src/ui/page.js";
@@ -11,6 +12,7 @@ import {
 	newHost,
 	NOW,
 	pathsOf,
+	pendingChain,
 	respondUmamiOverview,
 	respondUmamiWebsites,
 	routableCollection,
@@ -64,7 +66,7 @@ describe("sync ticks", () => {
 	it("an index tick", async () => {
 		host = await newHost();
 		await routableCollection(host, 5);
-		await setState(host, { ...synced, phase: "paths", indexComplete: false });
+		await setState(host, { ...synced, phase: "paths", indexComplete: false, chain: pendingChain });
 
 		const calls = await bridgeCalls(tick(host));
 
@@ -220,7 +222,8 @@ describe("Umami, which answers one day per request", () => {
 		provider: "umami",
 		phase: "paths",
 		lastWork: "paths",
-		history: { since: addDays(TODAY, -90), until: YESTERDAY },
+		history: { since: addDays(TODAY, -90), until: YESTERDAY, version: HISTORY_VERSION },
+		chain: pendingChain,
 	};
 
 	it("an overview tick, with both days' totals new", async () => {
@@ -300,7 +303,7 @@ describe("Umami, which answers one day per request", () => {
 		host = await newHost("umami");
 		const empty = addDays(TODAY, -2);
 		const busy = addDays(TODAY, -3);
-		await setState(host, { ...caughtUp, history: { since: YESTERDAY, until: YESTERDAY } });
+		await setState(host, { ...caughtUp, history: { since: YESTERDAY, until: YESTERDAY, version: HISTORY_VERSION } });
 		await host.http.respond(umamiUrl.dayPaths(empty), umamiRows([]));
 		await host.http.respond(umamiUrl.dayPaths(busy), umamiRows(pathsOf(98, "/e-").map((path) => [path, 2, 1])));
 		await host.http.respond(umamiUrl.stats(busy), umamiStats(196, 98));
@@ -308,14 +311,14 @@ describe("Umami, which answers one day per request", () => {
 		const calls = await bridgeCalls(tick(host));
 
 		expect(calls.length, calls.join(", ")).toBeLessThanOrEqual(LIMIT);
-		expect((await host.inspect.kv.get<SyncState>("state"))?.history).toEqual({ since: busy, until: YESTERDAY });
+		expect((await host.inspect.kv.get<SyncState>("state"))?.history).toEqual({ since: busy, until: YESTERDAY, version: HISTORY_VERSION });
 		await expect(host.inspect.storage.get("daily", `${busy}|/e-97/`)).resolves.not.toBeNull();
 		await expect(host.inspect.storage.get("rollup", busy)).resolves.toMatchObject({ visits: 98 });
 	});
 
 	it("a history step across as many empty days as it may ask about", async () => {
 		host = await newHost("umami");
-		await setState(host, { ...caughtUp, history: { since: YESTERDAY, until: YESTERDAY } });
+		await setState(host, { ...caughtUp, history: { since: YESTERDAY, until: YESTERDAY, version: HISTORY_VERSION } });
 		for (const day of daysBack(10).slice(2)) await host.http.respond(umamiUrl.dayPaths(day), umamiRows([]));
 
 		const calls = await bridgeCalls(tick(host));
@@ -325,6 +328,7 @@ describe("Umami, which answers one day per request", () => {
 		expect((await host.inspect.kv.get<SyncState>("state"))?.history).toEqual({
 			since: addDays(TODAY, -8),
 			until: YESTERDAY,
+			version: HISTORY_VERSION,
 		});
 	});
 

@@ -119,6 +119,26 @@
 				"default": "category",
 				"description": "Comma-separated names of event data the site attaches to its page views, up to three. The Analytics page shows page views by each one's values. A value with commas counts once for each part. Leave empty to show none."
 			},
+			"readEvent": {
+				"type": "string",
+				"label": "Read-through event",
+				"description": "The custom event your site sends as a reader reaches each depth of an entry, for example post_read. Leave empty to turn read-through off."
+			},
+			"readEntryProperty": {
+				"type": "string",
+				"label": "Read-through entry property",
+				"description": "The event's property that names the entry: its slug (the last part of its path) or its path, for example post."
+			},
+			"readDepthProperty": {
+				"type": "string",
+				"label": "Read-through depth property",
+				"description": "The event's property that says how far the reader got, for example depth."
+			},
+			"readDepthValues": {
+				"type": "string",
+				"label": "Read-through depths",
+				"description": "That property's values in reading order, comma-separated, up to three, for example half, end."
+			},
 			"hosts": {
 				"type": "string",
 				"label": "Hostnames to count",

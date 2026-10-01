@@ -45,6 +45,7 @@ import {
 import { langOf, t, type Lang } from "../i18n.js";
 import { comparisonText, formatCount, formatDay, trendOf } from "./format.js";
 import { emptyReason, statusLine } from "./status.js";
+import { engagementSection, readsChart } from "./engagement.js";
 
 export const PAGE_PATH = "/analytics";
 /** The per-entry page (`./content.ts`), named here to keep the import one-way. */
@@ -335,6 +336,9 @@ export function renderPage(input: PageInput): AnalyticsBlock[] {
 		.filter(Boolean)
 		.join(" · ");
 	if (notes) out.push(context(notes));
+
+	out.push(...engagementSection(rollups, range, today, lang));
+	out.push(...readsChart(state.reads, range, today, now, lang));
 
 	out.push(header(t(lang, "topEntries")));
 	out.push(context(coverageText(input.topEntries, range, lang, Boolean(input.breakdowns))));

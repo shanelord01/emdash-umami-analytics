@@ -16,6 +16,8 @@
 
 import type { PluginContext } from "emdash/plugin";
 
+import { engagementOver, engagementReaches, type Engagement } from "../store/engagement.js";
+
 import { normalizePath } from "../index/paths.js";
 import { dailyStore, entriesStore, oldestDay, rollupStore, BIND_LIMIT, type Typed } from "../store/access.js";
 import { isPublished, sumWindow, type EntryRow, type RollupRow } from "../store/rows.js";
@@ -122,6 +124,13 @@ export interface SiteTotalsResult {
 	/** True when the window holds today, whose numbers still move. */
 	provisional: boolean;
 	previous: { since: Day; until: Day; visits: number; pageviews: number; estimated: boolean } | null;
+	engagement: {
+		since: Day;
+		bounceRate: number;
+		averageVisitSeconds: number;
+		pagesPerVisit: number;
+		previous: { bounceRate: number; averageVisitSeconds: number; pagesPerVisit: number } | null;
+	} | null;
 	historySince: Day | null;
 	lastSync: string | null;
 }
@@ -371,9 +380,35 @@ export async function siteTotals(ctx: PluginContext, input: unknown, now: Date):
 			pageviews: before.pageviews,
 			estimated: before.estimated,
 		},
+		engagement: engagementResult(stored, window.since, today, previousSince, previousUntil),
 		historySince,
 		lastSync: state.lastSync ?? null,
 	};
+}
+
+function engagementResult(
+	stored: RollupRow[],
+	since: Day,
+	today: Day,
+	previousSince: Day,
+	previousUntil: Day,
+): SiteTotalsResult["engagement"] {
+	const current = engagementOver(stored.filter((row) => within(row.date, since, today)));
+	if (!current) return null;
+	const before = engagementReaches(stored, previousSince)
+		? engagementOver(stored.filter((row) => within(row.date, previousSince, previousUntil)))
+		: null;
+	const figures = (e: Engagement) => ({
+		bounceRate: round(e.bounceRate, 4),
+		averageVisitSeconds: round(e.averageVisit, 1),
+		pagesPerVisit: round(e.pagesPerVisit, 2),
+	});
+	return { since: current.since, ...figures(current), previous: before && figures(before) };
+}
+
+function round(value: number, digits: number): number {
+	const factor = 10 ** digits;
+	return Math.round(value * factor) / factor;
 }
 
 async function listContext(ctx: PluginContext) {

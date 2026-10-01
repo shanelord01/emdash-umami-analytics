@@ -24,7 +24,7 @@
  *    devDependencies.
  */
 
-import type { BannerBlock, ChartBlock, ChartSeries, CodeBlock } from "@emdash-cms/blocks";
+import type { BannerBlock, ChartBlock, ChartSeries, CodeBlock, MeterBlock } from "@emdash-cms/blocks";
 import type {
 	ActionElement,
 	ActionsBlock,
@@ -149,7 +149,7 @@ export function columns(cols: AnalyticsBlock[][], opts?: { blockId?: string }): 
 
 export function timeseries(
 	series: ChartSeries[],
-	opts?: { blockId?: string; height?: number; style?: "line" | "bar"; gradient?: boolean },
+	opts?: { blockId?: string; height?: number; style?: "line" | "bar"; gradient?: boolean; yAxisName?: string },
 ): ChartBlock {
 	return {
 		type: "chart",
@@ -157,10 +157,22 @@ export function timeseries(
 			chart_type: "timeseries",
 			series,
 			...(opts?.style !== undefined && { style: opts.style }),
+			...(opts?.yAxisName !== undefined && { y_axis_name: opts.yAxisName }),
 			...(opts?.height !== undefined && { height: opts.height }),
 			...(opts?.gradient !== undefined && { gradient: opts.gradient }),
 		},
 		...(opts?.blockId !== undefined && { block_id: opts.blockId }),
+	};
+}
+
+export function meter(opts: { label: string; value: number; max?: number; customValue?: string; blockId?: string }): MeterBlock {
+	return {
+		type: "meter",
+		label: opts.label,
+		value: opts.value,
+		...(opts.max !== undefined && { max: opts.max }),
+		...(opts.customValue !== undefined && { custom_value: opts.customValue }),
+		...(opts.blockId !== undefined && { block_id: opts.blockId }),
 	};
 }
 
@@ -224,4 +236,5 @@ export type AnalyticsBlock =
 	| ColumnsBlock
 	| ChartBlock
 	| BannerBlock
-	| CodeBlock;
+	| CodeBlock
+	| MeterBlock;

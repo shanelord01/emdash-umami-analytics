@@ -53,6 +53,10 @@ function umamiRange(since: string, until: string): string {
  * finds no response and fails the tick.
  */
 export const umamiUrl = {
+	readValues: (depth: string) =>
+		`https://api.umami.is/v1/websites/${UMAMI_WEBSITE}/event-data/values?${umamiRange(addDays(TODAY, -29), TODAY)}&${UMAMI_FILTERS}&eventName=post_read&propertyName=post&epf0=${encodeURIComponent(`1.eq.depth.${depth}`)}`,
+	readSeries: (depth: string) =>
+		`https://api.umami.is/v1/websites/${UMAMI_WEBSITE}/events/series?${umamiRange(addDays(TODAY, -89), TODAY)}&${UMAMI_FILTERS}&unit=day&timezone=UTC&event=${encodeURIComponent("eq.post_read")}&epf0=${encodeURIComponent(`1.eq.depth.${depth}`)}`,
 	eventData: (since: string, until: string) =>
 		`https://api.umami.is/v1/websites/${UMAMI_WEBSITE}/event-data/events?${umamiRange(since, until)}&event=${encodeURIComponent("eq.emdash-umami-analytics:page-views")}&match=any&path=${encodeURIComponent("nre.^/_emdash(/|$)")}&eventType=1`,
 	stats: (day: string, base = "https://api.umami.is/v1") =>
@@ -122,6 +126,31 @@ export async function respondUmamiOverview(
 	await runtime.http.respond(umamiUrl.metrics("path", since, TODAY, 100), umamiRows(opts.paths ?? [["/", 30, 13]]));
 	await runtime.http.respond(umamiUrl.metrics("referrer", since, TODAY, 20), umamiRows([["google.com", 9, 6]]));
 	await runtime.http.respond(umamiUrl.metrics("country", since, TODAY, 50), umamiRows([["DE", 25, 11]]));
+}
+
+/** Read-through settings as a site sending `post_read` with `post` and `depth` would enter them. */
+export async function setReadSettings(runtime: PluginRuntimeTestHost, depths = "half,end") {
+	await runtime.fixtures.plugin.setting("readEvent", "post_read");
+	await runtime.fixtures.plugin.setting("readEntryProperty", "post");
+	await runtime.fixtures.plugin.setting("readDepthProperty", "depth");
+	await runtime.fixtures.plugin.setting("readDepthValues", depths);
+}
+
+/**
+ * Answer one read of the read event: per depth, reads by entry over 30 days
+ * and by day over 90.
+ */
+export async function respondReads(
+	runtime: PluginRuntimeTestHost,
+	byDepth: Record<string, { entries: Array<[value: string, reads: number]>; days: Array<[day: string, reads: number]> }>,
+) {
+	for (const [depth, { entries, days }] of Object.entries(byDepth)) {
+		await runtime.http.respond(umamiUrl.readValues(depth), umamiJson(entries.map(([value, total]) => ({ value, total }))));
+		await runtime.http.respond(
+			umamiUrl.readSeries(depth),
+			umamiJson(days.map(([day, y]) => ({ x: "post_read", t: `${day}T00:00:00Z`, y }))),
+		);
+	}
 }
 
 /** `event-data/events` rows for page views: no event name, one row per property and value. */
@@ -212,6 +241,13 @@ export function daysBack(count: number): string[] {
 
 export const tick = (runtime: PluginRuntimeTestHost, name = "sync") => () =>
 	runtime.transport.invokeHook("cron", { name, scheduledAt: NOW.toISOString() });
+
+/**
+ * A chained catch-up run that is already pending. With it in the state a
+ * sync starts no chain of its own, so a test can measure the sync as it
+ * runs outside one.
+ */
+export const pendingChain = { next: "catchup-a", at: new Date(NOW.getTime() + 50_000).toISOString() };
 
 /** A site that is fully caught up: index walked by this build, today's older pass done. */
 export const synced: SyncState = {

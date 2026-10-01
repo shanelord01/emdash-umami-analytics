@@ -35,8 +35,23 @@ export interface RollupRow {
 	date: Day;
 	pageviews: number;
 	visits: number;
+	/**
+	 * Visits with a single page view, and the seconds all visits lasted, when
+	 * the provider reports them. Rows stored before 0.1.2 lack both, which
+	 * means unknown, not zero.
+	 */
+	bounces?: number;
+	totaltime?: number;
 	sampleInterval: number;
 	fetchedAt: string;
+}
+
+/** The engagement fields of a day's totals, only those it has. */
+export function engagementOf(row: { bounces?: number; totaltime?: number }): { bounces?: number; totaltime?: number } {
+	return {
+		...(row.bounces !== undefined && { bounces: row.bounces }),
+		...(row.totaltime !== undefined && { totaltime: row.totaltime }),
+	};
 }
 
 /** The path -> entry join. `id` is the normalized path. */
@@ -134,12 +149,20 @@ export function decideWrite(
 	if (
 		existing.pageviews === incoming.pageviews &&
 		existing.visits === incoming.visits &&
-		existing.sampleInterval === incoming.sampleInterval
+		existing.sampleInterval === incoming.sampleInterval &&
+		engagementSame(existing, incoming)
 	) {
 		return { action: "skip", reason: "unchanged" };
 	}
 
 	return { action: "write" };
+}
+
+/** Daily path rows have no engagement fields, so they always compare equal here. */
+function engagementSame(a: DailyRow | RollupRow, b: DailyRow | RollupRow): boolean {
+	const x = a as { bounces?: number; totaltime?: number };
+	const y = b as { bounces?: number; totaltime?: number };
+	return x.bounces === y.bounces && x.totaltime === y.totaltime;
 }
 
 /**

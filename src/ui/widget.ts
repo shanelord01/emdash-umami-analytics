@@ -27,6 +27,7 @@ import { langOf, t, type Lang } from "../i18n.js";
 import { comparisonText, formatCount, trendOf } from "./format.js";
 import { PAGE_PATH } from "./page.js";
 import { emptyReason, statusLine } from "./status.js";
+import { engagementStats } from "./engagement.js";
 
 export const REFRESH_ACTION = "analytics:refresh";
 
@@ -113,6 +114,9 @@ export function renderWidget(input: WidgetInput): AnalyticsBlock[] {
 			},
 		]),
 	);
+
+	// Engagement from the same rows: no read beyond the two above.
+	out.push(...(engagementStats(rollups, WIDGET_DAYS, today, lang)?.blocks ?? []));
 
 	const topPaths = state.topPaths ?? [];
 	if (topPaths.length > 0) {

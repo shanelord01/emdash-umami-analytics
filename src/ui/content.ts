@@ -25,6 +25,8 @@
 
 import type { PluginContext } from "emdash/plugin";
 
+import { readsFor, type ReadSnapshot } from "../sync/reads.js";
+
 import { langOf, t, type Lang } from "../i18n.js";
 import { dailyStore, entriesStore, oldestDay, BIND_LIMIT, type Typed } from "../store/access.js";
 import { isPublished, type EntryRow } from "../store/rows.js";
@@ -306,6 +308,9 @@ function entryTable(input: ContentInput, lang: Lang) {
 	const combined = view.mode === "combined";
 	const showCollection = view.collection === null;
 	const showLanguage = input.multilingual && !combined;
+	// Reads beside the 30-day views they belong to, one column per depth.
+	// Not in the combined view, whose rows are groups of entries.
+	const reads = combined ? undefined : input.state.reads;
 
 	return table({
 		blockId: "analytics:content:entries",
@@ -324,6 +329,8 @@ function entryTable(input: ContentInput, lang: Lang) {
 			{ key: "views7", label: t(lang, "col7Days"), format: "number", sortable: true },
 			{ key: "views30", label: t(lang, "col30Days"), format: "number", sortable: true },
 			...(showLanguage ? [{ key: "allLanguages", label: t(lang, "colAllLanguages"), format: "number" as const }] : []),
+			...(reads?.depths.map((depth, i) => ({ key: `read${i}`, label: t(lang, "colReadTo", { depth }), format: "number" as const })) ??
+				[]),
 			{ key: "published", label: t(lang, "colPublished"), format: "text" },
 		],
 		rows: input.rows.map((row) => ({
@@ -335,10 +342,24 @@ function entryTable(input: ContentInput, lang: Lang) {
 			views7: row.views7,
 			views30: row.views30,
 			allLanguages: row.allLanguages ?? row.views30,
+			...readCells(reads, row.path),
 			published: row.publishedAt ? formatDay(row.publishedAt.slice(0, 10), lang) : "",
 		})),
 		emptyText: t(lang, "noEntriesHere"),
 	});
+}
+
+/**
+ * An entry's reads per depth as table cells. An entry the snapshot does not
+ * list had no reads, unless the provider cut the list short, and then it
+ * is left blank rather than shown as zero.
+ */
+function readCells(reads: ReadSnapshot | undefined, path: string): Record<string, number | string> {
+	if (!reads) return {};
+	const counts = readsFor(reads, path);
+	return Object.fromEntries(
+		reads.depths.map((_, i) => [`read${i}`, counts ? (counts[i] ?? 0) : reads.partial ? "" : 0]),
+	);
 }
 
 /**
