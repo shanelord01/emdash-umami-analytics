@@ -140,6 +140,19 @@ describe("read-through", () => {
 		expect((await state(host)).reads).toBeUndefined();
 	});
 
+	it("is off while the Read-through switch is off, even with every field set", async () => {
+		host = await newHost("umami");
+		await setReadSettings(host);
+		await host.fixtures.plugin.setting("readThrough", false);
+		await setState(host, caughtUp);
+		await host.http.respond(umamiUrl.dayPaths(TODAY), umamiRows([]));
+
+		await tick(host)();
+
+		expect(host.http.requests().some((r) => /event-data\/values|events\/series/.test(r.url))).toBe(false);
+		expect((await state(host)).reads).toBeUndefined();
+	});
+
 	it("is read into a snapshot in a slot after a paths tick, two requests per depth", async () => {
 		host = await newHost("umami");
 		await setReadSettings(host);

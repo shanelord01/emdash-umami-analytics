@@ -2,6 +2,8 @@
 
 ## 0.1.3
 
+The settings form follows the order of setup, with plain labels and an example in every description. The Umami API URL is a URL field with a placeholder, and a Read-through switch (on by default, so existing settings keep working) turns read-through off without clearing its fields. Setting keys are unchanged.
+
 Days follow the site's time zone. Every day was a UTC day, so on a Sydney site a page view before about 10 am (11 am in daylight time) was counted on the day before: a view at 8:15 am on 27 September landed on the 26th. EmDash gives a sandboxed plugin no site time zone, so a new Time zone setting takes an IANA name, starts at `Australia/Sydney`, and falls back to it for a name that is not recognised. Set it to the website's time zone in Umami. The setting has the same key, label and default as in Buffer Plus.
 
 Each day is asked of Umami as that local day: `startAt` and `endAt` are its first and last millisecond in the zone, so the day the clocks change is 23 or 25 hours long. `stats`, `metrics/expanded` and `events/series` also get `timezone`, which they accept. `events/series` buckets read-through by it, where it had `UTC` before. The event data routes take no `timezone` and get none. Charts place each day at its local midnight, and the analytics page, the dashboard card, the per-entry page and the MCP tools count today in the zone.

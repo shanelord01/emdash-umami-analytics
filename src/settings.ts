@@ -139,6 +139,9 @@ function parseProperties(raw: unknown): string[] {
  * depth are set: anything less could not be counted, so it reads as off.
  */
 function parseReads(raw: Map<string, unknown>): ReadSpec | null {
+	// The Read-through switch defaults to on, so a site that set the fields
+	// before the switch existed keeps reading; only an explicit off stops it.
+	if (raw.get("readThrough") === false) return null;
 	const event = str(raw.get("readEvent"));
 	const entryProperty = str(raw.get("readEntryProperty"));
 	const depthProperty = str(raw.get("readDepthProperty"));

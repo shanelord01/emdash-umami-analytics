@@ -101,16 +101,17 @@ Open Plugins in the admin, then the plugin's settings.
 | Setting | What to enter |
 |---|---|
 | Data source | Umami. Demo data is for trying the plugin without Umami (see below) |
+| Umami API URL | For your own Umami, its address with `/api` on the end, such as `https://analytics.example.com/api`. The default is Umami Cloud's address, which is untested |
 | Umami API key | The key from the step above. It is stored encrypted |
 | Umami website ID | The ID from the website's settings in Umami. If you leave it empty, the dashboard card lists the websites the key can see so you can copy one |
-| Umami API URL | For a self-hosted Umami enter `https://your-host/api`. The default is Umami Cloud's address, which is untested |
 | Hostnames to count | Leave empty to count your site URL and its `www` form. Enter a comma-separated list to count other hostnames |
 | Time zone | The zone your days are counted in, as an IANA name such as `Australia/Sydney` (the default), `Europe/Berlin` or `UTC`. Use the website's time zone in Umami. A name that is not recognised counts as `Australia/Sydney`. Changing it clears the stored numbers, which are then read again |
+| Break down page views by | `category` by default. Up to three event data properties your site attaches to its page views, comma-separated, for example `category, section`. Leave it empty to show none. See "Views by event data" below |
+| Read-through | On by default. Turn it off to stop reading it without clearing the four fields that follow |
+| Reading event, Post property, Progress property, Reading milestones | Empty by default, which means no read-through. See "Read-through" below |
 | Sync every | 15 minutes by default |
-| Keep daily rows for | 90 days by default, 400 at most. The plugin reads this far back from Umami after install |
-| Paths per sync tick | 36 by default. Lower it to write fewer database rows per day |
-| Read-through event, entry property, depth property, depths | Empty by default, which turns read-through off. See "Read-through" below |
-| Views by event data | `category` by default. The names of up to three event data properties your site attaches to its page views, separated by commas, for example `category, section`. Leave it empty to show none. See "Views by event data" below |
+| Keep daily history for | 90 days by default, 400 at most. The plugin reads this far back from Umami after install |
+| Entries per sync step | 36 by default. Lower it to write fewer database rows per day |
 
 After saving, open Plugins > Analytics and select Check setup. It runs
 through everything the numbers depend on, from the key to the scheduled
@@ -152,8 +153,8 @@ Umami answers for one day per request, so the plugin reads a day at a
 time and stores what it reads in your site's database.
 
 Today is read on every sync and is labelled as still counting. Earlier
-days are read once each, newest first, back to the Keep daily rows for
-setting, and the chart grows backwards while they arrive. Per-entry views
+days are read once each, newest first, back to the Keep daily history
+for setting, and the chart grows backwards while they arrive. Per-entry views
 over 7 and 30 days are sums of those stored days plus today.
 
 While the plugin is catching up (matching your entries to their pages,
@@ -190,7 +191,7 @@ When you compare with Umami's own dashboard:
 Umami can store extra values with each page view, such as the category of
 the blog post being read. When your site sends them, the Analytics page
 shows how many page views carried each value, one table for each property
-named in the Views by event data setting. The default is `category`.
+named in the Break down page views by setting. The default is `category`.
 
 Your site attaches the values with the Umami tracker's `data-before-send`
 hook. A page view is an `event` payload without a `name`:
@@ -238,14 +239,14 @@ page beside each entry's 30-day views, in the editor panel as a bar per
 depth against the entry's views, and as reads by day on the Analytics
 page.
 
-Set the four Read-through settings to match your event, for example:
+Set the four reading fields, below the Read-through switch, to match your event, for example:
 
 | Setting | Example |
 |---|---|
-| Read-through event | `post_read` |
-| Read-through entry property | `post`, holding the entry's slug (the last part of its path) or its path |
-| Read-through depth property | `depth` |
-| Read-through depths | `half, end`, in reading order, up to three |
+| Reading event | `post_read` |
+| Post property | `post`, holding the entry's slug (the last part of its path) or its path |
+| Progress property | `depth` |
+| Reading milestones | `half, end`, in reading order, up to three |
 
 Your site sends the event with the tracker, for example
 `umami.track("post_read", { post: "my-post", depth: "half" })` when a

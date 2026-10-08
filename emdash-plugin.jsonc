@@ -100,54 +100,61 @@
 					{ "value": "umami", "label": "Umami (Cloud or self-hosted)" },
 					{ "value": "demo", "label": "Demo data (generated, not real traffic)" }
 				],
-				"description": "Demo data needs no account and fills the dashboard with generated numbers. Switching the data source clears the stored numbers."
+				"description": "Umami for your real numbers. Demo data needs no account and fills the pages with made-up traffic. Switching clears the stored numbers."
+			},
+			"umamiApiUrl": {
+				"type": "url",
+				"label": "Umami API URL",
+				"default": "https://api.umami.is/v1",
+				"placeholder": "https://analytics.example.com/api",
+				"description": "Where the plugin reaches Umami. For your own Umami, its address with /api on the end, for example https://analytics.example.com/api, on a public hostname. Leave the default for Umami Cloud (untested)."
 			},
 			"umamiApiKey": {
 				"type": "secret",
 				"label": "Umami API key",
-				"description": "Create it in Umami under Settings → API keys, as a user who can view the website and nothing else. Self-hosted Umami has API keys from 3.4.0."
+				"description": "Create it in Umami under Settings > API keys, signed in as a view-only user who can see this website. Self-hosted Umami has API keys from 3.4.0."
 			},
 			"umamiWebsiteId": {
 				"type": "string",
 				"label": "Umami website ID",
-				"description": "The ID in the website's settings in Umami. Leave empty and the widget lists the websites of the key's user and of that user's teams. The ID can also be typed in."
-			},
-			"umamiApiUrl": {
-				"type": "string",
-				"label": "Umami API URL",
-				"default": "https://api.umami.is/v1",
-				"description": "Umami Cloud as it stands. For a self-hosted Umami, https://your-host/api: a public hostname, because EmDash refuses private addresses."
-			},
-			"breakdownProperties": {
-				"type": "string",
-				"label": "Views by event data",
-				"default": "category",
-				"description": "Comma-separated names of event data the site attaches to its page views, up to three. The Analytics page shows page views by each one's values. A value with commas counts once for each part. Leave empty to show none."
-			},
-			"readEvent": {
-				"type": "string",
-				"label": "Read-through event",
-				"description": "The custom event your site sends as a reader reaches each depth of an entry, for example post_read. Leave empty to turn read-through off."
-			},
-			"readEntryProperty": {
-				"type": "string",
-				"label": "Read-through entry property",
-				"description": "The event's property that names the entry: its slug (the last part of its path) or its path, for example post."
-			},
-			"readDepthProperty": {
-				"type": "string",
-				"label": "Read-through depth property",
-				"description": "The event's property that says how far the reader got, for example depth."
-			},
-			"readDepthValues": {
-				"type": "string",
-				"label": "Read-through depths",
-				"description": "That property's values in reading order, comma-separated, up to three, for example half, end."
+				"description": "From the website's settings in Umami: 36 characters such as 12345678-abcd-4ef0-9876-0123456789ab. Leave empty and the dashboard card lists the websites the key can see, to copy one from."
 			},
 			"hosts": {
 				"type": "string",
 				"label": "Hostnames to count",
-				"description": "Comma-separated. Leave empty to use the site URL and its www form. Any other hostname the website reports, a preview domain for one, is not counted."
+				"description": "Leave empty to count your site's address and its www form. Otherwise a comma-separated list, for example example.com, www.example.com. Other hostnames, such as preview deploys, are not counted."
+			},
+			"breakdownProperties": {
+				"type": "string",
+				"label": "Break down page views by",
+				"default": "category",
+				"description": "Event data your site attaches to its page views, up to three, comma-separated, for example category, section, tags. The Analytics page shows page views for each value. Leave empty for none."
+			},
+			"readThrough": {
+				"type": "boolean",
+				"label": "Read-through",
+				"default": true,
+				"description": "Shows how far readers get through each post, from a reading event your site sends. Uses the four fields below; turn off to stop without clearing them."
+			},
+			"readEvent": {
+				"type": "string",
+				"label": "Reading event",
+				"description": "The custom event your site sends as a reader gets further through a post, for example post_read. Leave empty if your site sends none."
+			},
+			"readEntryProperty": {
+				"type": "string",
+				"label": "Post property",
+				"description": "The event's property that names the post, by its slug or its path, for example post."
+			},
+			"readDepthProperty": {
+				"type": "string",
+				"label": "Progress property",
+				"description": "The event's property that says how far the reader got, for example depth."
+			},
+			"readDepthValues": {
+				"type": "string",
+				"label": "Reading milestones",
+				"description": "The progress property's values in reading order, comma-separated, up to three, for example half, end."
 			},
 			"timeZone": {
 				"type": "string",
@@ -164,20 +171,21 @@
 					{ "value": "*/30 * * * *", "label": "30 minutes" },
 					{ "value": "0 * * * *", "label": "Hour" },
 					{ "value": "0 */6 * * *", "label": "6 hours" }
-				]
+				],
+				"description": "How often the plugin reads new numbers from Umami. After install it catches up faster on its own."
 			},
 			"retentionDays": {
 				"type": "number",
-				"label": "Keep daily rows for",
-				"description": "Days. The first syncs read this many days back from Umami, newest first, and older rows are deleted.",
+				"label": "Keep daily history for",
+				"description": "Days, 7 to 400. After install the plugin reads this far back from Umami, and deletes older days.",
 				"default": 90,
 				"min": 7,
 				"max": 400
 			},
 			"chunkSize": {
 				"type": "number",
-				"label": "Paths per sync tick",
-				"description": "Lower this if the site runs on D1's free plan; every path written costs several D1 rows.",
+				"label": "Entries per sync step",
+				"description": "10 to 36. Lower it only if the site runs on Cloudflare D1's free plan, to write fewer database rows a day.",
 				"default": 36,
 				"min": 10,
 				"max": 36
