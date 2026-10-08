@@ -8,9 +8,12 @@ import {
 	UMAMI_CLOUD_API,
 	umamiDashboardUrl,
 } from "../src/providers/umami.js";
+import { localDay } from "../src/sync/window.js";
 
 const WEBSITE = "11111111-2222-4333-8444-555555555555";
 const RANGE = { since: "2026-09-14", until: "2026-09-20" };
+/** The zone the provider defaults to, as the settings do. */
+const SYDNEY = "Australia/Sydney";
 
 interface Call {
 	url: URL;
@@ -48,8 +51,9 @@ function kind(call: Call): string {
 	return endpoint === "expanded" ? `metrics:${call.url.searchParams.get("type")}` : endpoint;
 }
 
+/** The Sydney day a request starts on. */
 function dayOf(call: Call): string {
-	return new Date(Number(call.url.searchParams.get("startAt"))).toISOString().slice(0, 10);
+	return localDay(new Date(Number(call.url.searchParams.get("startAt"))), SYDNEY);
 }
 
 const row = (name: string, pageviews: number, visits: number, visitors = visits) => ({
@@ -109,12 +113,68 @@ describe("every request", () => {
 		expect(calls).toHaveLength(0);
 	});
 
-	it("covers whole UTC days, from the first millisecond to the last", async () => {
+	it("covers whole days in the site's zone, from the first millisecond to the last", async () => {
 		const { calls, fetch } = recorder(quiet);
 		await provider(fetch).overview(RANGE);
 		const ranged = calls.find((call) => kind(call) === "metrics:path")!;
+		// Midnight in Sydney (+10:00 in September) is 14:00 UTC the day before.
+		expect(ranged.url.searchParams.get("startAt")).toBe(String(Date.parse("2026-09-13T14:00:00.000Z")));
+		expect(ranged.url.searchParams.get("endAt")).toBe(String(Date.parse("2026-09-20T13:59:59.999Z")));
+	});
+
+	it("covers the days of another zone when one is set", async () => {
+		const { calls, fetch } = recorder(quiet);
+		await provider(fetch, { timeZone: "UTC" }).overview(RANGE);
+		const ranged = calls.find((call) => kind(call) === "metrics:path")!;
 		expect(ranged.url.searchParams.get("startAt")).toBe(String(Date.parse("2026-09-14T00:00:00.000Z")));
 		expect(ranged.url.searchParams.get("endAt")).toBe(String(Date.parse("2026-09-20T23:59:59.999Z")));
+		expect(ranged.url.searchParams.get("timezone")).toBe("UTC");
+	});
+
+	it("reads a page view at 8:15 am in Sydney with that Sydney day", async () => {
+		// 2026-09-26T22:15Z is 8:15 am on the 27th in Sydney. Keyed in UTC
+		// it was counted on the 26th.
+		const { calls, fetch } = recorder(quiet);
+		await provider(fetch).dayTotals?.("2026-09-27");
+		const view = Date.parse("2026-09-26T22:15:00.000Z");
+		expect(Number(calls[0]!.url.searchParams.get("startAt"))).toBeLessThanOrEqual(view);
+		expect(Number(calls[0]!.url.searchParams.get("endAt"))).toBeGreaterThanOrEqual(view);
+		const { calls: before, fetch: beforeFetch } = recorder(quiet);
+		await provider(beforeFetch).dayTotals?.("2026-09-26");
+		expect(Number(before[0]!.url.searchParams.get("endAt"))).toBeLessThan(view);
+	});
+
+	it("asks for each day across the start of daylight time by its own bounds", async () => {
+		// Sydney goes to +11:00 at 2 am on 4 October 2026, so that day is 23
+		// hours long and the next starts an hour earlier in UTC.
+		const { calls, fetch } = recorder(() => ({ body: [] }));
+		await provider(fetch).paths(["/"], { since: "2026-10-03", until: "2026-10-05" });
+		expect(calls.map((call) => [call.url.searchParams.get("startAt"), call.url.searchParams.get("endAt")])).toEqual(
+			[
+				["2026-10-02T14:00:00.000Z", "2026-10-03T13:59:59.999Z"],
+				["2026-10-03T14:00:00.000Z", "2026-10-04T12:59:59.999Z"],
+				["2026-10-04T13:00:00.000Z", "2026-10-05T12:59:59.999Z"],
+			].map(([start, end]) => [String(Date.parse(start!)), String(Date.parse(end!))]),
+		);
+	});
+
+	it("names the zone to the routes that take one, and only to those", async () => {
+		// `stats`, `metrics/expanded` and `events/series` have `timezone` in
+		// their schema at v3.4.0. The event data routes do not.
+		const { calls, fetch } = recorder((call) => (kind(call) === "stats" ? { body: stats(1, 1, 1) } : { body: [] }));
+		const umami = provider(fetch);
+		await umami.overview(RANGE, { properties: ["category"] });
+		await umami.readThrough?.(
+			{ event: "post_read", entryProperty: "post", depthProperty: "depth", depths: ["end"] },
+			{ entries: RANGE, daily: RANGE },
+		);
+		const zoned = (call: Call) => call.url.searchParams.get("timezone");
+		const endpoint = (call: Call) => call.url.pathname.split("/").slice(-2).join("/");
+		const withZone = [...new Set(calls.filter(zoned).map(endpoint))].sort();
+		const without = [...new Set(calls.filter((call) => !zoned(call)).map(endpoint))].sort();
+		expect(withZone).toEqual([`${WEBSITE}/stats`, "events/series", "metrics/expanded"]);
+		expect(without).toEqual(["event-data/events", "event-data/values"]);
+		for (const call of calls.filter(zoned)) expect(zoned(call)).toBe(SYDNEY);
 	});
 
 	it("keeps admin page views out, the totals included", async () => {
@@ -240,12 +300,12 @@ describe("the overview", () => {
 });
 
 describe("a day's paths", () => {
-	it("asks for one UTC day with a limit far above Umami's default of 500", async () => {
+	it("asks for one local day with a limit far above Umami's default of 500", async () => {
 		const { calls, fetch } = recorder(quiet);
 		await provider(fetch).day?.("2026-09-18");
 		expect(calls).toHaveLength(1);
 		expect(dayOf(calls[0]!)).toBe("2026-09-18");
-		expect(calls[0]!.url.searchParams.get("endAt")).toBe(String(Date.parse("2026-09-18T23:59:59.999Z")));
+		expect(calls[0]!.url.searchParams.get("endAt")).toBe(String(Date.parse("2026-09-18T13:59:59.999Z")));
 		expect(Number(calls[0]!.url.searchParams.get("limit"))).toBe(MAX_DAY_PATHS);
 	});
 
@@ -566,8 +626,8 @@ describe("page views by event data", () => {
 		await provider(fetch).overview(RANGE, { properties: ["category"] });
 		const asked = calls.find((call) => call.url.pathname.endsWith("/event-data/events"))!;
 		expect(Object.fromEntries(asked.url.searchParams)).toEqual({
-			startAt: String(Date.parse("2026-09-14T00:00:00.000Z")),
-			endAt: String(Date.parse("2026-09-20T23:59:59.999Z")),
+			startAt: String(Date.parse("2026-09-13T14:00:00.000Z")),
+			endAt: String(Date.parse("2026-09-20T13:59:59.999Z")),
 			event: "eq.emdash-umami-analytics:page-views",
 			match: "any",
 			path: "nre.^/_emdash(/|$)",
@@ -645,16 +705,17 @@ describe("read-through", () => {
 		const series = calls.filter((call) => call.url.pathname.endsWith("/events/series"));
 		expect(values.map((call) => call.url.searchParams.get("epf0")).sort()).toEqual(["1.eq.depth.end", "1.eq.depth.half"]);
 		expect(Object.fromEntries(values[0]!.url.searchParams)).toMatchObject({
-			startAt: String(Date.parse("2026-09-01T00:00:00.000Z")),
+			startAt: String(Date.parse("2026-08-31T14:00:00.000Z")),
 			eventName: "post_read",
 			propertyName: "post",
 			// The site's own filters still apply: reads on a preview host do not count.
 			hostname: "eq.example.com,www.example.com",
 		});
 		expect(Object.fromEntries(series[0]!.url.searchParams)).toMatchObject({
-			startAt: String(Date.parse("2026-07-03T00:00:00.000Z")),
+			startAt: String(Date.parse("2026-07-02T14:00:00.000Z")),
 			unit: "day",
-			timezone: "UTC",
+			// Umami buckets by the same days the request covers.
+			timezone: SYDNEY,
 			event: "eq.post_read",
 		});
 	});

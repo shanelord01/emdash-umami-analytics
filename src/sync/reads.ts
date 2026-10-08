@@ -11,7 +11,7 @@
  * the last 90, the longest range the analytics page offers. Pages, the
  * panel and the widget read the snapshot and ask the provider nothing.
  *
- * The snapshot is read again every few hours, when the UTC day changes,
+ * The snapshot is read again every few hours, when the local day changes,
  * and when the settings change.
  */
 

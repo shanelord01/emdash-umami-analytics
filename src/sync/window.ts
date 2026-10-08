@@ -2,12 +2,31 @@
  * Date windows for the sync job. Pure, so the rules that matter can be
  * tested without a provider.
  *
- * Everything here is UTC. Cloudflare's GraphQL API has no timezone
- * concept — `date` is a UTC calendar day — while the Cloudflare dashboard
- * renders in the viewer's local timezone. Mixing the two is the single
- * easiest way to produce numbers that look wrong for reasons that have
- * nothing to do with the plugin.
+ * A day is a calendar day in the site's time zone (the Time zone
+ * setting), written `YYYY-MM-DD`. Umami's own dashboard shows days in the
+ * website's time zone, and a page view at 8:15 am in Sydney belongs to that
+ * Sydney day, not to the UTC day before it. So every day key the plugin
+ * stores and every window it asks for is a local day:
+ *
+ * - `localDay` names the day an instant falls on, from the zone's own
+ *   calendar (`Intl.DateTimeFormat` parts), never from a fixed offset.
+ * - `dayStartMs` and `dayEndMs` give the first and last millisecond of a
+ *   day, which is what Umami's `startAt` and `endAt` take. A day is 23, 24
+ *   or 25 hours long where the zone changes its clocks.
+ * - `addDays`, `daysBetween` and `enumerateDays` are calendar arithmetic
+ *   on the day keys. They need no zone, and a clock change cannot move
+ *   them, because they never pass through an instant.
+ *
+ * The sampling rules below come from the Cloudflare plugin this one is
+ * derived from, whose API had no time zone at all. Their measurements are
+ * kept as they were taken.
  */
+
+import { dayOf, dayStartMs, DEFAULT_TIME_ZONE } from "../time/zone.js";
+
+// The zone helper is shared with emdash-to-buffer-plus and copied as it
+// is, so both plugins count days the same way.
+export { dayStartMs, DEFAULT_TIME_ZONE, resolveTimeZone } from "../time/zone.js";
 
 /**
  * How far back `date_geq` may reach before Cloudflare switches the whole
@@ -44,9 +63,10 @@ export const UNSAMPLED_WINDOW_DAYS = 7;
  */
 export const DEFAULT_OVERLAP_DAYS = 2;
 
+
 const MS_PER_DAY = 86_400_000;
 
-/** A UTC calendar day, `YYYY-MM-DD` — the format the API speaks. */
+/** A calendar day in the site's time zone, `YYYY-MM-DD`. */
 export type Day = string;
 
 const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -55,23 +75,41 @@ export function isDay(value: unknown): value is Day {
 	return typeof value === "string" && DAY_PATTERN.test(value);
 }
 
-/** The UTC calendar day containing `at`. */
-export function utcDay(at: Date): Day {
-	return at.toISOString().slice(0, 10);
+/**
+ * The zone the stored days are keyed in (the sync state's `dayZone`), for
+ * the pages, the widget and the MCP tools, which read the state and not the
+ * settings. Before the first sync it is the setting's default.
+ */
+export function stateZone(state: { dayZone?: string }): string {
+	return state.dayZone ?? DEFAULT_TIME_ZONE;
 }
 
+/** The calendar day in `zone` that contains `at`. */
+export function localDay(at: Date, zone: string): Day {
+	return dayOf(at, zone);
+}
+
+/**
+ * The last millisecond of `day` in `zone`: one before the next day starts.
+ * A day is 23 or 25 hours long where the zone changes its clocks.
+ */
+export function dayEndMs(day: Day, zone: string): number {
+	return dayStartMs(addDays(day, 1), zone) - 1;
+}
+
+/** `day` at midnight UTC, used only for calendar arithmetic on day keys. */
 function dayToMs(day: Day): number {
-	const ms = Date.parse(`${day}T00:00:00.000Z`);
-	if (Number.isNaN(ms)) throw new RangeError(`Not a UTC day: ${day}`);
+	const ms = isDay(day) ? Date.parse(`${day}T00:00:00.000Z`) : Number.NaN;
+	if (Number.isNaN(ms)) throw new RangeError(`Not a day: ${day}`);
 	return ms;
 }
 
-/** Shift a day by whole days. Negative moves backwards. */
+/** Shift a day by whole calendar days. Negative moves backwards. */
 export function addDays(day: Day, delta: number): Day {
-	return utcDay(new Date(dayToMs(day) + delta * MS_PER_DAY));
+	return new Date(dayToMs(day) + delta * MS_PER_DAY).toISOString().slice(0, 10);
 }
 
-/** Whole days from `from` to `to`; negative when `to` is earlier. */
+/** Whole calendar days from `from` to `to`; negative when `to` is earlier. */
 export function daysBetween(from: Day, to: Day): number {
 	return Math.round((dayToMs(to) - dayToMs(from)) / MS_PER_DAY);
 }
@@ -86,7 +124,7 @@ export function enumerateDays(since: Day, until: Day): Day[] {
 export interface SyncWindow {
 	/** `date_geq` — never older than the unsampled cliff. */
 	since: Day;
-	/** `date_leq` — today, in UTC. */
+	/** `date_leq`: today, in the site's time zone. */
 	until: Day;
 	/** True when the requested overlap had to be shortened to stay unsampled. */
 	clamped: boolean;
@@ -104,8 +142,9 @@ export function syncWindow(
 	now: Date,
 	overlapDays: number = DEFAULT_OVERLAP_DAYS,
 	exactDays: number = UNSAMPLED_WINDOW_DAYS,
+	zone: string = DEFAULT_TIME_ZONE,
 ): SyncWindow {
-	const until = utcDay(now);
+	const until = localDay(now, zone);
 	const wanted = Math.max(0, Math.trunc(overlapDays));
 	const allowed = Math.min(wanted, Math.max(0, Math.trunc(exactDays)));
 	return { since: addDays(until, -allowed), until, clamped: allowed < wanted };
@@ -118,8 +157,12 @@ export function syncWindow(
  * backfill stops here and the UI says the store starts on this day rather
  * than inventing tenfold-quantized history.
  */
-export function backfillWindow(now: Date, exactDays: number = UNSAMPLED_WINDOW_DAYS): SyncWindow {
-	return syncWindow(now, exactDays, exactDays);
+export function backfillWindow(
+	now: Date,
+	exactDays: number = UNSAMPLED_WINDOW_DAYS,
+	zone: string = DEFAULT_TIME_ZONE,
+): SyncWindow {
+	return syncWindow(now, exactDays, exactDays, zone);
 }
 
 /**

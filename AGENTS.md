@@ -118,11 +118,19 @@ with `pnpm changeset` for every change that ships either way, written for
 someone upgrading.
 
 Listing images go in `images/` and are declared under
-`release.artifacts.screenshots` in the manifest. There are none yet. Never
+`release.artifacts` in the manifest: the banner (`images/banner.webp`,
+1536x512, the registry's 3:1 shape) and no screenshots yet. The bundle
+leaves `images/` out, and publish uploads each one separately. Never
 use a `screenshots/` folder: the registry bundle takes it whole and refuses
 a bundle over 256 KB or an image over 128 KB. The registry also refuses a
 manifest `description` over 140 graphemes, which `emdash-plugin validate`
 does not check.
+
+`docs/registry/` holds the registry page's tabs, referenced from
+`sections` in the manifest. Each is capped at 20000 bytes and 2000
+graphemes, which `tests/docs.test.ts` checks. Update `changelog.md` there
+with each release: keep the last two releases and link to `CHANGELOG.md`
+for the rest.
 
 Never name a script `publish`, `version` or `prepare`: npm and pnpm
 run scripts with those names on their own during a publish or a version

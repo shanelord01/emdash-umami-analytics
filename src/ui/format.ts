@@ -85,7 +85,13 @@ export function comparisonText(current: number, previous: number | null, locale?
 	return t(lang, "vsPrevious", { change });
 }
 
-/** A UTC day, written the reader's way: "18 Sept 2026", "18.09.2026". */
+/**
+ * A day key, written the reader's way: "18 Sept 2026", "18.09.2026".
+ *
+ * The key is already a calendar day in the site's time zone, so it is
+ * formatted as a date with no time zone of its own: its UTC midnight,
+ * printed in UTC, shows the same day wherever the reader is.
+ */
 export function formatDay(day: string, locale?: string): string {
 	const ms = Date.parse(`${day}T00:00:00.000Z`);
 	if (Number.isNaN(ms)) return day;

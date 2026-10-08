@@ -8,11 +8,15 @@ import { langOf, t, type Lang } from "../i18n.js";
 import { engagementByDay, engagementOver, engagementReaches } from "../store/engagement.js";
 import type { RollupRow } from "../store/rows.js";
 import type { ReadSnapshot } from "../sync/reads.js";
-import { addDays, daysBetween, type Day } from "../sync/window.js";
+import { addDays, dayStartMs, daysBetween, DEFAULT_TIME_ZONE, type Day } from "../sync/window.js";
 import { columns, context, header, stats, timeseries, type AnalyticsBlock } from "./blocks.js";
 import { comparisonText, formatAge, formatDay, formatDuration, formatPercent, formatRatio, pointsText, trendOf } from "./format.js";
 
-const at = (day: Day) => Date.parse(`${day}T00:00:00.000Z`);
+/**
+ * A chart point's time: the day's local midnight in the site's zone, which
+ * the chart shows as that day to a reader in that zone.
+ */
+const at = (day: Day, zone: string) => dayStartMs(day, zone);
 
 function within(day: Day, since: Day, until: Day): boolean {
 	return daysBetween(since, day) >= 0 && daysBetween(day, until) >= 0;
@@ -78,7 +82,13 @@ export function engagementStats(
  * seconds. Two charts because the units differ and the block has one
  * axis. Days without engagement are left out, not drawn as zero.
  */
-export function engagementCharts(rows: RollupRow[], days: number, today: Day, lang: Lang): AnalyticsBlock | null {
+export function engagementCharts(
+	rows: RollupRow[],
+	days: number,
+	today: Day,
+	lang: Lang,
+	zone: string = DEFAULT_TIME_ZONE,
+): AnalyticsBlock | null {
 	const start = addDays(today, -(days - 1));
 	const byDay = engagementByDay(rows.filter((r) => within(r.date, start, today)));
 	if (byDay.length === 0) return null;
@@ -89,7 +99,7 @@ export function engagementCharts(rows: RollupRow[], days: number, today: Day, la
 				[
 					{
 						name: t(lang, "bounceRate"),
-						data: byDay.map((d) => [at(d.date), Math.round(d.bounceRate * 1000) / 10] as [number, number]),
+						data: byDay.map((d) => [at(d.date, zone), Math.round(d.bounceRate * 1000) / 10] as [number, number]),
 					},
 				],
 				{ blockId: "analytics:chart:bounce-rate", height: 220, gradient: true, yAxisName: t(lang, "axisPercent") },
@@ -98,7 +108,7 @@ export function engagementCharts(rows: RollupRow[], days: number, today: Day, la
 		[
 			header(t(lang, "averageVisitByDay")),
 			timeseries(
-				[{ name: t(lang, "averageVisit"), data: byDay.map((d) => [at(d.date), Math.round(d.averageVisit)] as [number, number]) }],
+				[{ name: t(lang, "averageVisit"), data: byDay.map((d) => [at(d.date, zone), Math.round(d.averageVisit)] as [number, number]) }],
 				{ blockId: "analytics:chart:visit-time", height: 220, gradient: true, yAxisName: t(lang, "axisSeconds") },
 			),
 		],
@@ -106,11 +116,17 @@ export function engagementCharts(rows: RollupRow[], days: number, today: Day, la
 }
 
 /** The engagement section of the analytics page: figures, charts and what they cover. */
-export function engagementSection(rows: RollupRow[], days: number, today: Day, locale: string | undefined): AnalyticsBlock[] {
+export function engagementSection(
+	rows: RollupRow[],
+	days: number,
+	today: Day,
+	locale: string | undefined,
+	zone: string = DEFAULT_TIME_ZONE,
+): AnalyticsBlock[] {
 	const lang = langOf(locale);
 	const figures = engagementStats(rows, days, today, lang);
 	if (!figures) return [];
-	const charts = engagementCharts(rows, days, today, lang);
+	const charts = engagementCharts(rows, days, today, lang, zone);
 	const notes = [
 		t(lang, "engagementNote"),
 		...(figures.since ? [t(lang, "engagementSince", { date: formatDay(figures.since, lang) })] : []),
@@ -123,7 +139,14 @@ export function engagementSection(rows: RollupRow[], days: number, today: Day, l
  * give them, over the days of the range the snapshot covers. Nothing when
  * there is no snapshot or no read in the range.
  */
-export function readsChart(snapshot: ReadSnapshot | undefined, days: number, today: Day, now: Date, locale: string | undefined): AnalyticsBlock[] {
+export function readsChart(
+	snapshot: ReadSnapshot | undefined,
+	days: number,
+	today: Day,
+	now: Date,
+	locale: string | undefined,
+	zone: string = DEFAULT_TIME_ZONE,
+): AnalyticsBlock[] {
 	if (!snapshot) return [];
 	const lang = langOf(locale);
 	const start = addDays(today, -(days - 1));
@@ -132,7 +155,7 @@ export function readsChart(snapshot: ReadSnapshot | undefined, days: number, tod
 
 	const series = snapshot.depths.map((depth, i) => ({
 		name: depth,
-		data: inRange.map((row) => [at(row.date), row.counts[i] ?? 0] as [number, number]),
+		data: inRange.map((row) => [at(row.date, zone), row.counts[i] ?? 0] as [number, number]),
 	}));
 	const age = formatAge(snapshot.at, now, lang) ?? t(lang, "recently");
 	const notes = [

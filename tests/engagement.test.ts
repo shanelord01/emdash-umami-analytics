@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { engagementByDay, engagementOver } from "../src/store/engagement.js";
 import type { RollupRow } from "../src/store/rows.js";
 import type { ReadSnapshot } from "../src/sync/reads.js";
-import { addDays } from "../src/sync/window.js";
+import { addDays, dayStartMs } from "../src/sync/window.js";
 import { engagementSection, engagementStats, readsChart } from "../src/ui/engagement.js";
 import { formatDay, formatDuration } from "../src/ui/format.js";
 import { renderWidget } from "../src/ui/widget.js";
@@ -117,13 +117,16 @@ describe("the engagement figures", () => {
 
 describe("the engagement charts", () => {
 	it("plot the bounce rate in percent and the visit time in seconds, one chart each, a point per day", () => {
-		const section = engagementSection(owner(), 7, TODAY, "en");
+		const section = engagementSection(owner(), 7, TODAY, "en", "Europe/Berlin");
 		expect(validateBlocks(section).valid).toBe(true);
 		const charts = chartsIn(section);
 		const bounce = charts.get("analytics:chart:bounce-rate")!;
 		const time = charts.get("analytics:chart:visit-time")!;
 		expect(bounce.series.map((s) => s.data.length)).toEqual([7]);
-		expect(bounce.series[0]!.data[0]).toEqual([Date.parse(`${addDays(TODAY, -6)}T00:00:00.000Z`), 77]);
+		// A point sits at its day's midnight in the site's zone, which the
+		// chart shows as that day to a reader there.
+		expect(bounce.series[0]!.data[0]).toEqual([Date.parse(`${addDays(TODAY, -6)}T00:00:00.000+02:00`), 77]);
+		expect(bounce.series[0]!.data[0]![0]).toBe(dayStartMs(addDays(TODAY, -6), "Europe/Berlin"));
 		expect(time.series[0]!.data[0]![1]).toBe(82);
 		expect(bounce.y_axis_name).toBe("%");
 		expect(time.y_axis_name).toBe("Seconds");

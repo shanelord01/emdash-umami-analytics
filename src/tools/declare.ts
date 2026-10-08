@@ -27,11 +27,11 @@ import {
 } from "./load.js";
 
 export function mcpTools(): Record<string, SandboxedMcpTool> {
-	const day = z.string().describe("A UTC day, YYYY-MM-DD.");
+	const day = z.string().describe("A day in the plugin's Time zone setting, YYYY-MM-DD.");
 	const window = z.object({
 		days: z.number().int(),
 		since: day,
-		until: day.describe("Today in UTC. Its numbers still move."),
+		until: day.describe("Today in the Time zone setting. Its numbers still move."),
 		partial: z
 			.boolean()
 			.describe("True when stored history starts after since, so the numbers cover fewer days than the window."),
@@ -49,7 +49,7 @@ export function mcpTools(): Record<string, SandboxedMcpTool> {
 	const entryDays = z
 		.union([z.literal(7), z.literal(30)])
 		.optional()
-		.describe("Window in days, ending today (UTC). Default 30.");
+		.describe("Window in days, ending today in the Time zone setting. Default 30.");
 	const listInput = z.object({
 		days: entryDays,
 		collection: z
@@ -185,7 +185,7 @@ export function mcpTools(): Record<string, SandboxedMcpTool> {
 				days: z
 					.union([z.literal(7), z.literal(30), z.literal(90)])
 					.optional()
-					.describe("Window in days, ending today (UTC). Default 30."),
+					.describe("Window in days, ending today in the Time zone setting. Default 30."),
 			}),
 			output: z.object({
 				window,

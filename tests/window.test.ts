@@ -3,28 +3,122 @@ import { describe, expect, it } from "vitest";
 import {
 	addDays,
 	backfillWindow,
+	dayEndMs,
+	dayStartMs,
 	daysBetween,
+	DEFAULT_TIME_ZONE,
 	enumerateDays,
 	isDay,
 	isExact,
 	isFrozen,
 	isProvisional,
+	localDay,
+	resolveTimeZone,
+	stateZone,
 	syncWindow,
 	UNSAMPLED_WINDOW_DAYS,
-	utcDay,
 } from "../src/sync/window.js";
 
 const at = (iso: string) => new Date(iso);
 
-describe("day arithmetic", () => {
-	it("reads the UTC day, not the local one", () => {
-		// 23:30 in Munich on the 20th is already the 20th in UTC; 00:30 is
-		// the 19th. A local-time implementation gets the second one wrong.
-		expect(utcDay(at("2026-09-20T21:30:00.000Z"))).toBe("2026-09-20");
-		expect(utcDay(at("2026-09-20T23:30:00+02:00"))).toBe("2026-09-20");
-		expect(utcDay(at("2026-09-21T00:30:00+02:00"))).toBe("2026-09-20");
+const SYDNEY = "Australia/Sydney";
+
+describe("local days", () => {
+	it("puts a page view on the site's day, not the UTC one", () => {
+		// 8:15 am in Sydney on 27 September is still the 26th in UTC. Keyed
+		// in UTC it was charted a day early, as everything before about
+		// 10 am Sydney time was.
+		expect(localDay(at("2026-09-26T22:15:00.000Z"), SYDNEY)).toBe("2026-09-27");
+		expect(localDay(at("2026-09-26T22:15:00.000Z"), "UTC")).toBe("2026-09-26");
+		expect(localDay(at("2026-09-26T13:59:59.999Z"), SYDNEY)).toBe("2026-09-26");
+		expect(localDay(at("2026-09-26T14:00:00.000Z"), SYDNEY)).toBe("2026-09-27");
 	});
 
+	it("reads the zone's day, not the runtime's", () => {
+		// 00:30 in Berlin on the 21st is the 20th in UTC and the 21st in
+		// Berlin, whatever zone the test runs in.
+		expect(localDay(at("2026-09-21T00:30:00+02:00"), "Europe/Berlin")).toBe("2026-09-21");
+		expect(localDay(at("2026-09-21T00:30:00+02:00"), "UTC")).toBe("2026-09-20");
+	});
+
+	it("starts and ends a Sydney day at local midnight", () => {
+		expect(dayStartMs("2026-09-27", SYDNEY)).toBe(Date.parse("2026-09-26T14:00:00.000Z"));
+		expect(dayEndMs("2026-09-27", SYDNEY)).toBe(Date.parse("2026-09-27T13:59:59.999Z"));
+		expect(dayStartMs("2026-09-27", "UTC")).toBe(Date.parse("2026-09-27T00:00:00.000Z"));
+	});
+
+	it("gives 3 October its 24 hours at +10:00", () => {
+		expect(dayStartMs("2026-10-03", SYDNEY)).toBe(Date.parse("2026-10-02T14:00:00.000Z"));
+		expect(dayEndMs("2026-10-03", SYDNEY)).toBe(Date.parse("2026-10-03T13:59:59.999Z"));
+	});
+
+	it("gives the day the clocks go forward 23 hours", () => {
+		// Sydney moves to daylight time at 2 am on Sunday 4 October 2026:
+		// the day starts at +10:00 and ends at +11:00.
+		expect(dayStartMs("2026-10-04", SYDNEY)).toBe(Date.parse("2026-10-03T14:00:00.000Z"));
+		expect(dayEndMs("2026-10-04", SYDNEY)).toBe(Date.parse("2026-10-04T12:59:59.999Z"));
+		expect(dayEndMs("2026-10-04", SYDNEY) + 1 - dayStartMs("2026-10-04", SYDNEY)).toBe(23 * 3_600_000);
+		// The day after is a whole day again, at the new offset.
+		expect(dayStartMs("2026-10-05", SYDNEY)).toBe(Date.parse("2026-10-04T13:00:00.000Z"));
+		expect(dayEndMs("2026-10-05", SYDNEY) + 1 - dayStartMs("2026-10-05", SYDNEY)).toBe(24 * 3_600_000);
+		// And a view on either side of the change lands on its own day.
+		expect(localDay(at("2026-10-03T13:59:59.999Z"), SYDNEY)).toBe("2026-10-03");
+		expect(localDay(at("2026-10-04T12:59:59.999Z"), SYDNEY)).toBe("2026-10-04");
+		expect(localDay(at("2026-10-04T13:00:00.000Z"), SYDNEY)).toBe("2026-10-05");
+	});
+
+	it("gives the day the clocks go back 25 hours", () => {
+		expect(dayStartMs("2027-04-04", SYDNEY)).toBe(Date.parse("2027-04-03T13:00:00.000Z"));
+		expect(dayEndMs("2027-04-04", SYDNEY) + 1 - dayStartMs("2027-04-04", SYDNEY)).toBe(25 * 3_600_000);
+	});
+
+	it("starts a day whose midnight the clocks skip at its first instant", () => {
+		// Chile goes from 23:59:59 straight to 01:00 on 6 September 2026.
+		expect(dayStartMs("2026-09-06", "America/Santiago")).toBe(Date.parse("2026-09-06T04:00:00.000Z"));
+		expect(dayEndMs("2026-09-05", "America/Santiago")).toBe(Date.parse("2026-09-06T03:59:59.999Z"));
+	});
+
+	it("lays the days of a window end to end across a clock change", () => {
+		// No gap and no overlap: each day starts the millisecond after the
+		// one before it ends.
+		const days = enumerateDays("2026-10-02", "2026-10-06");
+		expect(days).toEqual(["2026-10-02", "2026-10-03", "2026-10-04", "2026-10-05", "2026-10-06"]);
+		for (const [i, day] of days.slice(1).entries()) {
+			expect(dayStartMs(day, SYDNEY)).toBe(dayEndMs(days[i]!, SYDNEY) + 1);
+		}
+	});
+
+	it("keeps a window on local days across the change", () => {
+		// 00:30 on 5 October in Sydney, which is still the 4th in UTC.
+		const w = syncWindow(at("2026-10-04T13:30:00.000Z"), 2, UNSAMPLED_WINDOW_DAYS, SYDNEY);
+		expect(w).toEqual({ since: "2026-10-03", until: "2026-10-05", clamped: false });
+	});
+});
+
+describe("the time zone setting", () => {
+	it("keeps a zone Intl knows, as Intl spells it", () => {
+		// The helper in src/time/zone.ts is copied from emdash-to-buffer-plus,
+		// whose own tests cover it further. These pin what this plugin needs.
+		expect(resolveTimeZone("Europe/Berlin")).toBe("Europe/Berlin");
+		expect(resolveTimeZone(" UTC ")).toBe("UTC");
+		expect(resolveTimeZone("australia/sydney")).toBe("Australia/Sydney");
+	});
+
+	it("falls back to the default for a name that is no zone", () => {
+		expect(DEFAULT_TIME_ZONE).toBe("Australia/Sydney");
+		expect(resolveTimeZone("Mars/Olympus_Mons")).toBe(DEFAULT_TIME_ZONE);
+		expect(resolveTimeZone("")).toBe(DEFAULT_TIME_ZONE);
+		expect(resolveTimeZone(undefined)).toBe(DEFAULT_TIME_ZONE);
+		expect(resolveTimeZone(10)).toBe(DEFAULT_TIME_ZONE);
+	});
+
+	it("reads the stored zone from the state, and the default before there is one", () => {
+		expect(stateZone({ dayZone: "Europe/Berlin" })).toBe("Europe/Berlin");
+		expect(stateZone({})).toBe(DEFAULT_TIME_ZONE);
+	});
+});
+
+describe("day arithmetic", () => {
 	it("crosses month, year and leap-day boundaries", () => {
 		expect(addDays("2026-03-01", -1)).toBe("2026-02-28");
 		expect(addDays("2028-03-01", -1)).toBe("2028-02-29");

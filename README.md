@@ -14,6 +14,20 @@ what you find in the repository's issues.
 
 ## What's new
 
+**0.1.3, 9 October 2026**
+- Days follow your time zone. They were UTC days, so a view before about
+  10 am in Sydney counted on the day before. The new Time zone setting
+  starts at Australia/Sydney.
+- On update the stored numbers are cleared once and read again from
+  Umami, newest first. Charts and views per entry refill over the
+  catch-up: about two hours for 90 days and 100 entries on Node, longer
+  on Cloudflare Workers.
+- The registry page has tabs (description, installation, FAQ, changelog
+  and security) and a banner.
+- The MCP tools now describe their days in your time zone, so EmDash
+  turns Agent access off after the update. Turn it on again under
+  Plugins.
+
 **0.1.2, 1 October 2026**
 - Engagement: bounce rate, average visit and pages per visit beside the
   totals, with charts on the Analytics page.
@@ -91,6 +105,7 @@ Open Plugins in the admin, then the plugin's settings.
 | Umami API key | The key from the step above. It is stored encrypted |
 | Umami website ID | The ID from the website's settings in Umami. If you leave it empty, the dashboard card lists the websites the key can see so you can copy one |
 | Hostnames to count | Leave empty to count your site URL and its `www` form. Enter a comma-separated list to count other hostnames |
+| Time zone | The zone your days are counted in, as an IANA name such as `Australia/Sydney` (the default), `Europe/Berlin` or `UTC`. Use the website's time zone in Umami. A name that is not recognised counts as `Australia/Sydney`. Changing it clears the stored numbers, which are then read again |
 | Break down page views by | `category` by default. Up to three event data properties your site attaches to its page views, comma-separated, for example `category, section`. Leave it empty to show none. See "Views by event data" below |
 | Read-through | On by default. Turn it off to stop reading it without clearing the four fields that follow |
 | Reading event, Post property, Progress property, Reading milestones | Empty by default, which means no read-through. See "Read-through" below |
@@ -161,8 +176,9 @@ shows numbers from the first minute after setup.
 
 When you compare with Umami's own dashboard:
 
-- Days are UTC. Umami shows days in your timezone, so daily figures
-  differ near midnight.
+- Days are calendar days in the Time zone setting. Umami's dashboard
+  shows days in the website's time zone, so set the same zone in both or
+  daily figures differ near midnight.
 - Visits are Umami's visits. Visitors are not shown yet.
 - The referrers table lists referring sites only. Visits that arrived
   without a referrer are in the totals and in no row of that table.

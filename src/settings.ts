@@ -19,6 +19,7 @@ import type { PluginContext } from "emdash/plugin";
 import { siteHosts } from "./index/paths.js";
 import type { ProviderId, ReadSpec } from "./providers/types.js";
 import { MAX_READ_DEPTHS } from "./sync/reads.js";
+import { resolveTimeZone } from "./sync/window.js";
 
 export interface AnalyticsSettings {
 	provider: ProviderId;
@@ -36,6 +37,12 @@ export interface AnalyticsSettings {
 	breakdownProperties: string[];
 	/** The read event and its properties, or null while read-through is off. */
 	reads: ReadSpec | null;
+	/**
+	 * The IANA zone whose calendar days the plugin counts in. EmDash gives
+	 * a sandboxed plugin no site time zone (`ctx.site` and `routeCtx.ui`
+	 * carry the locale only), so it is a setting of its own.
+	 */
+	timeZone: string;
 }
 
 export const DEFAULT_SYNC_INTERVAL = "*/15 * * * *";
@@ -80,6 +87,7 @@ export async function readSettings(ctx: PluginContext): Promise<SettingsResult> 
 
 	const breakdownProperties = parseProperties(raw.get("breakdownProperties"));
 	const reads = parseReads(raw);
+	const timeZone = resolveTimeZone(raw.get("timeZone"));
 
 	const partial = {
 		provider,
@@ -92,6 +100,7 @@ export async function readSettings(ctx: PluginContext): Promise<SettingsResult> 
 		chunkSize,
 		breakdownProperties,
 		reads,
+		timeZone,
 	};
 	if (provider === "demo") return { ok: true, settings: partial };
 

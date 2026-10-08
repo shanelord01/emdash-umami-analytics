@@ -3,7 +3,7 @@ import { expect, vi } from "vitest";
 
 import { INDEX_VERSION } from "../src/index/bootstrap.js";
 import type { SyncState } from "../src/sync/scheduler.js";
-import { addDays, utcDay } from "../src/sync/window.js";
+import { addDays, dayEndMs, dayStartMs, DEFAULT_TIME_ZONE, localDay } from "../src/sync/window.js";
 
 /**
  * Fixtures for tests that run the plugin inside the runtime test host.
@@ -13,7 +13,8 @@ import { addDays, utcDay } from "../src/sync/window.js";
  */
 
 export const NOW = new Date();
-export const TODAY = utcDay(NOW);
+/** Today in the zone the settings default to, which the host tests leave unset. */
+export const TODAY = localDay(NOW, DEFAULT_TIME_ZONE);
 
 export async function newHost(provider: "demo" | "umami" = "demo") {
 	if (provider !== "demo") {
@@ -40,10 +41,12 @@ export const UMAMI_WEBSITE = "11111111-2222-4333-8444-555555555555";
 
 const UMAMI_FILTERS = `path=${encodeURIComponent("nre.^/_emdash(/|$)")}&hostname=${encodeURIComponent("eq.example.test,www.example.test")}`;
 
+/** The `timezone` parameter, sent to the routes whose schema has one. */
+const UMAMI_ZONE = `timezone=${encodeURIComponent(DEFAULT_TIME_ZONE)}`;
+
+/** Whole days in the settings' default zone, from local midnight to the last millisecond. */
 function umamiRange(since: string, until: string): string {
-	const start = Date.parse(`${since}T00:00:00.000Z`);
-	const end = Date.parse(`${until}T23:59:59.999Z`);
-	return `startAt=${start}&endAt=${end}`;
+	return `startAt=${dayStartMs(since, DEFAULT_TIME_ZONE)}&endAt=${dayEndMs(until, DEFAULT_TIME_ZONE)}`;
 }
 
 /**
@@ -56,17 +59,17 @@ export const umamiUrl = {
 	readValues: (depth: string) =>
 		`https://api.umami.is/v1/websites/${UMAMI_WEBSITE}/event-data/values?${umamiRange(addDays(TODAY, -29), TODAY)}&${UMAMI_FILTERS}&eventName=post_read&propertyName=post&epf0=${encodeURIComponent(`1.eq.depth.${depth}`)}`,
 	readSeries: (depth: string) =>
-		`https://api.umami.is/v1/websites/${UMAMI_WEBSITE}/events/series?${umamiRange(addDays(TODAY, -89), TODAY)}&${UMAMI_FILTERS}&unit=day&timezone=UTC&event=${encodeURIComponent("eq.post_read")}&epf0=${encodeURIComponent(`1.eq.depth.${depth}`)}`,
+		`https://api.umami.is/v1/websites/${UMAMI_WEBSITE}/events/series?${umamiRange(addDays(TODAY, -89), TODAY)}&${UMAMI_ZONE}&${UMAMI_FILTERS}&unit=day&event=${encodeURIComponent("eq.post_read")}&epf0=${encodeURIComponent(`1.eq.depth.${depth}`)}`,
 	eventData: (since: string, until: string) =>
 		`https://api.umami.is/v1/websites/${UMAMI_WEBSITE}/event-data/events?${umamiRange(since, until)}&event=${encodeURIComponent("eq.emdash-umami-analytics:page-views")}&match=any&path=${encodeURIComponent("nre.^/_emdash(/|$)")}&eventType=1`,
 	stats: (day: string, base = "https://api.umami.is/v1") =>
-		`${base}/websites/${UMAMI_WEBSITE}/stats?${umamiRange(day, day)}&${UMAMI_FILTERS}`,
+		`${base}/websites/${UMAMI_WEBSITE}/stats?${umamiRange(day, day)}&${UMAMI_ZONE}&${UMAMI_FILTERS}`,
 	metrics: (type: "path" | "referrer" | "country", since: string, until: string, limit: number) =>
-		`https://api.umami.is/v1/websites/${UMAMI_WEBSITE}/metrics/expanded?${umamiRange(since, until)}&${UMAMI_FILTERS}&type=${type}&limit=${limit}`,
+		`https://api.umami.is/v1/websites/${UMAMI_WEBSITE}/metrics/expanded?${umamiRange(since, until)}&${UMAMI_ZONE}&${UMAMI_FILTERS}&type=${type}&limit=${limit}`,
 	dayPaths: (day: string) =>
-		`https://api.umami.is/v1/websites/${UMAMI_WEBSITE}/metrics/expanded?${umamiRange(day, day)}&${UMAMI_FILTERS}&type=path&limit=10000`,
+		`https://api.umami.is/v1/websites/${UMAMI_WEBSITE}/metrics/expanded?${umamiRange(day, day)}&${UMAMI_ZONE}&${UMAMI_FILTERS}&type=path&limit=10000`,
 	hostnames: (since: string, until: string) =>
-		`https://api.umami.is/v1/websites/${UMAMI_WEBSITE}/metrics/expanded?${umamiRange(since, until)}&path=${encodeURIComponent("nre.^/_emdash(/|$)")}&type=hostname&limit=50`,
+		`https://api.umami.is/v1/websites/${UMAMI_WEBSITE}/metrics/expanded?${umamiRange(since, until)}&${UMAMI_ZONE}&path=${encodeURIComponent("nre.^/_emdash(/|$)")}&type=hostname&limit=50`,
 	websites: () => "https://api.umami.is/v1/websites?includeTeams=true&pageSize=100",
 	teams: () => "https://api.umami.is/v1/me/teams?pageSize=4",
 	teamWebsites: (teamId: string) => `https://api.umami.is/v1/teams/${teamId}/websites?pageSize=100`,
@@ -253,6 +256,7 @@ export const pendingChain = { next: "catchup-a", at: new Date(NOW.getTime() + 50
 export const synced: SyncState = {
 	phase: "overview",
 	provider: "demo",
+	dayZone: DEFAULT_TIME_ZONE,
 	backfilled: true,
 	indexComplete: true,
 	indexVersion: INDEX_VERSION,
