@@ -11,7 +11,7 @@
  * - **Older**, `today - 29` to `today - 8`: days the provider can no longer
  *   reproduce and nothing writes any more, so their sum only changes when
  *   the date does. A pass over the stored `daily` rows computes it once
- *   per UTC day (`sync/older.ts`).
+ *   per local day (`sync/older.ts`).
  *
  * Summing all thirty days from the store on every tick would need about
  * thirty `getMany` ids per path, which a ten-call sandbox budget cannot

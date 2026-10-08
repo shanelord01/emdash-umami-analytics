@@ -13,7 +13,7 @@
  */
 
 import { normalizePath, type TrailingSlash } from "../index/paths.js";
-import { daysBetween, enumerateDays, utcDay, type Day } from "../sync/window.js";
+import { addDays, dayStartMs, daysBetween, DEFAULT_TIME_ZONE, enumerateDays, localDay, type Day } from "../sync/window.js";
 import type {
 	DailyRow,
 	DateRange,
@@ -51,6 +51,8 @@ export interface DemoConfig {
 	/** Paths to attribute traffic to: the indexed entries, in practice. */
 	listPaths: () => Promise<string[]>;
 	trailingSlash?: TrailingSlash;
+	/** The IANA zone whose days today and its elapsed share are counted in. */
+	timeZone?: string;
 	now?: () => Date;
 }
 
@@ -187,7 +189,11 @@ class DemoProvider implements Provider {
 	}
 
 	#today(): Day {
-		return utcDay(this.#now());
+		return localDay(this.#now(), this.#zone());
+	}
+
+	#zone(): string {
+		return this.#config.timeZone ?? DEFAULT_TIME_ZONE;
 	}
 
 	#now(): Date {
@@ -231,9 +237,10 @@ class DemoProvider implements Provider {
 	/** Today has only had the hours that passed; every other day is whole. */
 	#elapsedShare(day: Day): number {
 		const now = this.#now();
-		if (day !== utcDay(now)) return 1;
-		const midnight = Date.parse(`${day}T00:00:00.000Z`);
-		return (now.getTime() - midnight) / 86_400_000;
+		const zone = this.#zone();
+		if (day !== localDay(now, zone)) return 1;
+		const midnight = dayStartMs(day, zone);
+		return (now.getTime() - midnight) / (dayStartMs(addDays(day, 1), zone) - midnight);
 	}
 }
 

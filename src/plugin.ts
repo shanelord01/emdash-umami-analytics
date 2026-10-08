@@ -92,8 +92,8 @@ const plugin: SandboxedPlugin = {
 
 				if (event.name === RECONCILE_TASK) {
 					const result = await readSettings(ctx);
-					const retentionDays = result.ok ? result.settings.retentionDays : 90;
-					await runReconcile(ctx, retentionDays);
+					const values = result.ok ? result.settings : result.partial;
+					await runReconcile(ctx, values.retentionDays ?? 90, new Date(), values.timeZone);
 					return;
 				}
 

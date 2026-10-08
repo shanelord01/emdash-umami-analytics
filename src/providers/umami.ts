@@ -16,6 +16,11 @@
  *   `sampleInterval` is always 1 and a closed day can be read, or read
  *   again, whenever there is a request to spare.
  *
+ * Days are the site's local days (the Time zone setting). Each request
+ * asks for its range as `startAt` and `endAt`, the first and last
+ * millisecond of its days in that zone, and those that accept `timezone`
+ * get it as well, so that `events/series` buckets by the same days.
+ *
  * Every request carries the same two filters: the admin's own pages are
  * left out, and the hostname list is applied. A filter that differed
  * between the totals and the path rows would produce a table that does not
@@ -27,7 +32,16 @@
 
 import { failure } from "../i18n.js";
 import { isInternalPath, normalizeHost, normalizePath, type TrailingSlash } from "../index/paths.js";
-import { addDays, daysBetween, enumerateDays, utcDay, type Day } from "../sync/window.js";
+import {
+	addDays,
+	dayEndMs,
+	dayStartMs,
+	daysBetween,
+	DEFAULT_TIME_ZONE,
+	enumerateDays,
+	localDay,
+	type Day,
+} from "../sync/window.js";
 import type {
 	DailyRow,
 	DateRange,
@@ -99,8 +113,6 @@ const INTERNAL_PATHS = "nre.^/_emdash(/|$)";
  */
 const PAGE_VIEW_DATA = "eq.emdash-umami-analytics:page-views";
 
-const MS_PER_DAY = 86_400_000;
-
 export const UMAMI_CAPABILITIES: ProviderCapabilities = {
 	batchPaths: "wide-pull",
 	maxPathsPerQuery: MAX_DAY_PATHS,
@@ -120,6 +132,8 @@ export interface UmamiConfig {
 	/** Hosts to filter on. Empty means "do not filter". */
 	hosts?: string[];
 	trailingSlash?: TrailingSlash;
+	/** The IANA zone whose days are read. Defaults to `DEFAULT_TIME_ZONE`. */
+	timeZone?: string;
 	fetch: FetchLike;
 	now?: () => Date;
 }
@@ -185,6 +199,10 @@ class UmamiProvider implements Provider {
 		return this.#config.trailingSlash ?? "ignore";
 	}
 
+	get #zone(): string {
+		return this.#config.timeZone ?? DEFAULT_TIME_ZONE;
+	}
+
 	get #website(): string {
 		return `/websites/${encodeURIComponent(this.#config.websiteId)}`;
 	}
@@ -200,7 +218,7 @@ class UmamiProvider implements Provider {
 	async validate(): Promise<Result<true>> {
 		// A real read of the configured website: a key that authenticates and
 		// cannot view this website fails here, not on a key check.
-		const res = await this.dayTotals(utcDay(this.#config.now?.() ?? new Date()));
+		const res = await this.dayTotals(localDay(this.#config.now?.() ?? new Date(), this.#zone));
 		return res.ok ? { ok: true, value: true } : res;
 	}
 
@@ -327,7 +345,7 @@ class UmamiProvider implements Provider {
 	}
 
 	async dayTotals(day: Day): Promise<Result<DailyRow | null>> {
-		const res = await this.#get(`${this.#website}/stats`, this.#query({ since: day, until: day }));
+		const res = await this.#get(`${this.#website}/stats`, this.#query({ since: day, until: day }, { timezone: true }));
 		if (!res.ok) return res;
 		if (!isRecord(res.value)) return failure("umamiUnexpected");
 
@@ -375,9 +393,10 @@ class UmamiProvider implements Provider {
 						narrowed,
 					]),
 					this.#get(`${this.#website}/events/series`, [
-						...this.#query(ranges.daily),
+						// Buckets are the zone's days: `t` is the local midnight
+						// written as `YYYY-MM-DDT00:00:00Z`, so its date is the day.
+						...this.#query(ranges.daily, { timezone: true }),
 						["unit", "day"],
-						["timezone", "UTC"],
 						["event", `eq.${spec.event}`],
 						narrowed,
 					]),
@@ -436,15 +455,17 @@ class UmamiProvider implements Provider {
 	 * v3.4.0 and checked against a live server on PostgreSQL.
 	 *
 	 * The hostname filter cannot be sent here, because "or" would join it
-	 * too, so these counts include every hostname the website reports.
+	 * too, so these counts include every hostname the website reports. The
+	 * route takes no `timezone`: it does not group by time, and the local
+	 * days are already in `startAt` and `endAt`.
 	 *
 	 * This is an extra on the analytics page: if it fails, the page shows
 	 * no breakdown rather than falling back to the store.
 	 */
 	async #properties(range: DateRange, asked: string[]): Promise<PropertyBreakdown[] | undefined> {
 		const res = await this.#get(`${this.#website}/event-data/events`, [
-			["startAt", String(dayStart(range.since))],
-			["endAt", String(dayStart(range.until) + MS_PER_DAY - 1)],
+			["startAt", String(dayStartMs(range.since, this.#zone))],
+			["endAt", String(dayEndMs(range.until, this.#zone))],
 			["event", PAGE_VIEW_DATA],
 			["match", "any"],
 			["path", INTERNAL_PATHS],
@@ -552,7 +573,7 @@ class UmamiProvider implements Provider {
 		opts: { hosts?: boolean } = {},
 	): Promise<Result<MetricRow[]>> {
 		const res = await this.#get(`${this.#website}/metrics/expanded`, [
-			...this.#query(range, opts),
+			...this.#query(range, { ...opts, timezone: true }),
 			["type", type],
 			["limit", String(limit)],
 		]);
@@ -573,16 +594,22 @@ class UmamiProvider implements Provider {
 	}
 
 	/**
-	 * The range and the two filters every read shares. Days are whole UTC
-	 * days, from the first millisecond of `since` to the last of `until`,
-	 * today included, so the same day always makes the same request.
+	 * The range and the two filters every read shares. Days are whole days
+	 * in the site's zone, from the first millisecond of `since` to the last
+	 * of `until`, today included, so the same day always makes the same
+	 * request. A day where the clocks change is 23 or 25 hours long.
+	 *
+	 * `timezone` is sent only to the routes whose schema has it (`stats`,
+	 * `metrics/expanded` and `events/series` at v3.4.0). The event data
+	 * routes do not, and their parser drops what it does not know.
 	 */
-	#query(range: DateRange, opts: { hosts?: boolean } = {}): Array<[string, string]> {
+	#query(range: DateRange, opts: { hosts?: boolean; timezone?: boolean } = {}): Array<[string, string]> {
 		const params: Array<[string, string]> = [
-			["startAt", String(dayStart(range.since))],
-			["endAt", String(dayStart(range.until) + MS_PER_DAY - 1)],
-			["path", INTERNAL_PATHS],
+			["startAt", String(dayStartMs(range.since, this.#zone))],
+			["endAt", String(dayEndMs(range.until, this.#zone))],
 		];
+		if (opts.timezone) params.push(["timezone", this.#zone]);
+		params.push(["path", INTERNAL_PATHS]);
 		const hosts = this.#hosts;
 		// `eq.` takes a comma-separated list. Named for the reason given at
 		// `INTERNAL_PATHS`: the hostname `t.co` would otherwise be an operator.
@@ -667,10 +694,6 @@ function textEquals(property: string, value: string): string {
 /** Umami stores ISO 3166-1 alpha-2 codes, which the page turns into names. */
 function countryCode(name: string): string {
 	return /^[a-z]{2}$/i.test(name) ? name.toUpperCase() : name;
-}
-
-function dayStart(day: Day): number {
-	return Date.parse(`${day}T00:00:00.000Z`);
 }
 
 /**

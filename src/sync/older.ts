@@ -5,7 +5,7 @@
  * `today - 8`, see `store/views.ts`) in path order, sums each path, and
  * writes the sums into the matching `entries` rows. Rows in that window
  * are never rewritten, because the paths tick only fetches the last eight
- * days, so the sums hold for the rest of the UTC day.
+ * days, so the sums hold for the rest of the local day.
  *
  * The walk is sized to the budget it is given and resumes from a stored
  * cursor. A path whose rows straddle two pages is carried to the next
@@ -26,7 +26,7 @@ import type { EntryRow } from "../store/rows.js";
 import { foldByPath, olderWindow, withOlder } from "../store/views.js";
 import type { Day } from "./window.js";
 
-/** Where the pass for one UTC day stands. */
+/** Where the pass for one local day stands. */
 export interface OlderPass {
 	day: Day;
 	complete: boolean;

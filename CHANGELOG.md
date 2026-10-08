@@ -2,9 +2,15 @@
 
 ## 0.1.3
 
+Days follow the site's time zone. Every day was a UTC day, so on a Sydney site a page view before about 10 am (11 am in daylight time) was counted on the day before: a view at 8:15 am on 27 September landed on the 26th. EmDash gives a sandboxed plugin no site time zone, so a new Time zone setting takes an IANA name, starts at `Australia/Sydney`, and falls back to it for a name that is not recognised. Set it to the website's time zone in Umami. The setting has the same key, label and default as in Buffer Plus.
+
+Each day is asked of Umami as that local day: `startAt` and `endAt` are its first and last millisecond in the zone, so the day the clocks change is 23 or 25 hours long. `stats`, `metrics/expanded` and `events/series` also get `timezone`, which they accept. `events/series` buckets read-through by it, where it had `UTC` before. The event data routes take no `timezone` and get none. Charts place each day at its local midnight, and the analytics page, the dashboard card, the per-entry page and the MCP tools count today in the zone.
+
+What happens on update: the first sync finds a store keyed in UTC (0.1.2 recorded no zone) and clears it before anything else. It deletes the `rollup` and `daily` rows, frozen ones included, and resets each entry's views (`views7`, `views30` and their parts) to zero, a few hundred rows per run. With a scheduler each run starts the next about a minute later. Entries, the content index and settings stay. Then the overview reads today and yesterday, and the history pass reads every earlier day again, newest first, back to Keep daily rows for, while the paths tick refills the views per entry. Read-through is read again too. Until the catch-up ends, charts are shorter and views per entry lower than before: on Node about two hours for 90 days and 100 entries, on Cloudflare Workers at the Cron Trigger's pace. Changing the Time zone setting later clears and refills the same way.
+
 The registry page has tabs: description, installation, FAQ, changelog and security, from the files in `docs/registry/`. It also has a banner, drawn at the registry's 3:1 shape so link previews show it whole.
 
-Nothing in the plugin itself changed. No new permissions and no MCP tool output changes, so Agent access stays on after the update.
+No new permissions, and the new setting needs no approval. The MCP tools are unchanged, so Agent access stays on after the update. Their descriptions still call the days UTC days: the days they answer with are now in the Time zone setting.
 
 ## 0.1.2
 

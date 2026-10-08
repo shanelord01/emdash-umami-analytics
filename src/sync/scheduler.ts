@@ -45,7 +45,16 @@ import { missingSettingsMessage, readSettings, type AnalyticsSettings } from "..
 import { historyBackfilling, historyDue, runHistoryStep, type HistoryPass } from "./history.js";
 import { readRanges, readsDue, readsMissing, type ReadSnapshot } from "./reads.js";
 import { olderDue, olderSettled, runOlderStep, type OlderPass } from "./older.js";
-import { addDays, backfillWindow, enumerateDays, syncWindow, utcDay, UNSAMPLED_WINDOW_DAYS, type Day } from "./window.js";
+import {
+	addDays,
+	backfillWindow,
+	DEFAULT_TIME_ZONE,
+	enumerateDays,
+	localDay,
+	syncWindow,
+	UNSAMPLED_WINDOW_DAYS,
+	type Day,
+} from "./window.js";
 
 export const SYNC_TASK = "sync";
 export const RECONCILE_TASK = "reconcile";
@@ -144,6 +153,14 @@ export interface SyncState {
 	backfilled?: boolean;
 	/** Keyset cursor into `entries` while a provider switch resets views. */
 	wipeCursor?: string;
+	/**
+	 * The IANA zone the stored days are keyed in. Version 0.1.2 and earlier
+	 * keyed them in UTC and wrote no zone, so a state that records a
+	 * provider and no zone holds UTC days. A stored zone that differs from
+	 * the Time zone setting clears the stored numbers (see `runWipe`), and
+	 * the history pass reads them again.
+	 */
+	dayZone?: string;
 }
 
 /** Referrer and country rows kept from each overview, for the analytics page. */
@@ -151,8 +168,9 @@ const SNAPSHOT_ROWS = 10;
 
 /**
  * Bridge calls a provider-switch wipe may spend on its batches: ten, less
- * the state read, the settings read and the state write. A batch is a
- * query and a delete or reset, so the loop only starts one with two left.
+ * the state read, the settings read and the state write, and one less again
+ * when it schedules a chained run. A batch is a query and a delete or
+ * reset, so the loop only starts one with two left.
  */
 const WIPE_CALLS = 7;
 
@@ -264,6 +282,7 @@ export function buildProvider(ctx: PluginContext, settings: AnalyticsSettings): 
 				return (page?.items ?? []).filter((item) => item.data.status !== "deleted").map((item) => item.data.path);
 			},
 			trailingSlash: ctx.site.trailingSlash,
+			timeZone: settings.timeZone,
 		});
 	}
 	if (!ctx.http) return null;
@@ -274,6 +293,7 @@ export function buildProvider(ctx: PluginContext, settings: AnalyticsSettings): 
 		apiUrl: settings.umamiApiUrl,
 		hosts: settings.hosts,
 		trailingSlash: ctx.site.trailingSlash,
+		timeZone: settings.timeZone,
 		fetch: (url, init) => http.fetch(url, init),
 	});
 }
@@ -323,7 +343,17 @@ export async function runSync(
 	// them, so a state without one holds nothing to clear.
 	const target = result.ok ? result.settings.provider : (result.partial.provider ?? "umami");
 	const stored = state.provider;
-	if (stored && stored !== target) return await runWipe(ctx, state, target, now);
+	// Days keyed in another zone are cleared the same way: a day key means
+	// one calendar day, and a UTC day stored beside a Sydney one would be
+	// counted against the wrong date. That is every store 0.1.2 left
+	// behind, which records no zone, and a store whose Time zone setting
+	// has changed since.
+	const zone = result.ok ? result.settings.timeZone : (result.partial.timeZone ?? DEFAULT_TIME_ZONE);
+	if (stored && (stored !== target || state.dayZone !== zone)) {
+		return await runWipe(ctx, state, target, zone, now, options.catchUp);
+	}
+	// Nothing stored yet: the days this run stores are keyed in the zone.
+	if (state.dayZone !== zone) state = { ...state, dayZone: zone };
 
 	if (!result.ok) {
 		const problem: Problem = { key: "notConfigured", params: { missing: result.missing.join(",") } };
@@ -343,7 +373,7 @@ export async function runSync(
 	// query, but the operator gets a usable hint instead of silence. Demo
 	// data has no sites to choose between.
 	if (!settings.siteTag && settings.provider !== "demo") {
-		return await suggestSite(ctx, provider, state, now);
+		return await suggestSite(ctx, provider, state, now, settings.timeZone);
 	}
 
 	// A chained run always takes a paths slot: the recurring sync, which
@@ -353,7 +383,9 @@ export async function runSync(
 	if (chain) state = { ...state, chain: { next: chain.next, at: chain.at } };
 	const reserve = chain ? 1 : 0;
 
-	if (options.overview || (!chain && state.phase !== "paths")) return await runOverviewPhase(ctx, provider, state, now);
+	if (options.overview || (!chain && state.phase !== "paths")) {
+		return await runOverviewPhase(ctx, provider, state, now, settings.timeZone);
+	}
 
 	const outcome = await runSlot(ctx, provider, settings, state, now, reserve);
 	const after = lastWritten.get(ctx);
@@ -376,14 +408,15 @@ async function runSlot(
 	// paths phase can only ask about paths the index already knows.
 	if (!state.indexComplete) return await runIndexPhase(ctx, state, now, reserve);
 
+	const today = localDay(now, settings.timeZone);
 	const background = ["index", "older", "history", "reads"] as Array<SyncState["lastWork"]>;
 	if (!background.includes(state.lastWork)) {
 		if (indexOutdated(state)) return await runIndexPhase(ctx, state, now, reserve);
-		if (olderDue(state.older, utcDay(now))) return await runOlderPhase(ctx, state, now, reserve);
-		if (provider.readThrough && settings.reads && readsDue(state.reads, settings.reads, now, utcDay(now))) {
+		if (olderDue(state.older, today)) return await runOlderPhase(ctx, state, now, today, reserve);
+		if (provider.readThrough && settings.reads && readsDue(state.reads, settings.reads, now, today)) {
 			return await runReadsPhase(ctx, provider, settings, state, now);
 		}
-		if (isWidePull(provider) && historyDue(state.history, utcDay(now), historyFloor(settings, now))) {
+		if (isWidePull(provider) && historyDue(state.history, today, historyFloor(settings, now))) {
 			return await runHistoryPhase(ctx, provider, settings, state, now, reserve);
 		}
 	} else if (
@@ -474,7 +507,7 @@ function isWidePull(provider: Provider): boolean {
 
 /** The oldest day worth reading: the first one `reconcile` would keep. */
 function historyFloor(settings: AnalyticsSettings, now: Date): Day {
-	return addDays(utcDay(now), -settings.retentionDays);
+	return addDays(localDay(now, settings.timeZone), -settings.retentionDays);
 }
 
 /** Does the stored index come from an older walk, or has a rebuild been asked for? */
@@ -519,6 +552,7 @@ async function runOverviewPhase(
 	provider: Provider,
 	state: SyncState,
 	now: Date,
+	zone: string,
 ): Promise<SyncOutcome> {
 	// The first overview reaches back as far as the provider stays exact, so
 	// a fresh install starts with that much history (demo: ninety days). A
@@ -528,12 +562,12 @@ async function runOverviewPhase(
 	const exactDays = provider.capabilities.exactWindowDays;
 	const range =
 		state.backfilled || isWidePull(provider)
-			? syncWindow(now, OVERVIEW_DAYS_BACK, exactDays)
-			: backfillWindow(now, exactDays);
+			? syncWindow(now, OVERVIEW_DAYS_BACK, exactDays, zone)
+			: backfillWindow(now, exactDays, zone);
 	const res = await provider.overview(range);
 	if (!res.ok) return await fail(ctx, state, "overview", res.error, now, res.problem);
 
-	const today = utcDay(now);
+	const today = localDay(now, zone);
 	const { written, skipped } = await writeRollup(ctx, res.value, today, now);
 
 	await writeState(ctx, {
@@ -600,10 +634,16 @@ async function runIndexPhase(ctx: PluginContext, state: SyncState, now: Date, re
  * Calls: kv.get, settings.list, then at most seven on storage (daily
  * pages, entries.getMany, entries.putMany), kv.set.
  */
-async function runOlderPhase(ctx: PluginContext, state: SyncState, now: Date, reserve = 0): Promise<SyncOutcome> {
+async function runOlderPhase(
+	ctx: PluginContext,
+	state: SyncState,
+	now: Date,
+	today: Day,
+	reserve = 0,
+): Promise<SyncOutcome> {
 	let result;
 	try {
-		result = await runOlderStep(ctx, state.older, utcDay(now), OLDER_CALLS - reserve);
+		result = await runOlderStep(ctx, state.older, today, OLDER_CALLS - reserve);
 	} catch (error) {
 		const summing = failure("summingFailed", { detail: String(error) });
 		return await fail(ctx, { ...state, lastWork: "older" }, "paths", summing.error, now, summing.problem);
@@ -626,7 +666,7 @@ async function runOlderPhase(ctx: PluginContext, state: SyncState, now: Date, re
  *
  * Calls: kv.get, settings.list, two requests per depth (six at most, see
  * `MAX_READ_DEPTHS`), kv.set. It runs when the snapshot is due, at most
- * every six hours and once each UTC day, in a slot after a paths tick:
+ * every six hours and once each local day, in a slot after a paths tick:
  * one paths slot in twelve at the default interval, and fewer as the
  * interval grows.
  */
@@ -638,7 +678,7 @@ async function runReadsPhase(
 	now: Date,
 ): Promise<SyncOutcome> {
 	const spec = settings.reads!;
-	const today = utcDay(now);
+	const today = localDay(now, settings.timeZone);
 	const ranges = readRanges(today);
 	const res = await provider.readThrough!(spec, ranges);
 	if (!res.ok) return await fail(ctx, { ...state, lastWork: "reads" }, "paths", res.error, now, res.problem);
@@ -685,7 +725,7 @@ async function runHistoryPhase(
 			ctx,
 			provider,
 			state.history,
-			utcDay(now),
+			localDay(now, settings.timeZone),
 			historyFloor(settings, now),
 			HISTORY_CALLS - reserve,
 			now,
@@ -728,7 +768,7 @@ async function runPathsPhase(
 	// A wide-pull provider is asked for today alone, which is one request.
 	// The other days of the window are read from the store further down.
 	const wide = isWidePull(provider);
-	const recent = syncWindow(now, PATHS_WINDOW_DAYS);
+	const recent = syncWindow(now, PATHS_WINDOW_DAYS, UNSAMPLED_WINDOW_DAYS, settings.timeZone);
 	const range = wide ? { since: recent.until, until: recent.until } : recent;
 
 	// Ordering by `path` rather than insertion order because `path` is a
@@ -762,7 +802,7 @@ async function runPathsPhase(
 	const res = await provider.paths(paths, range);
 	if (!res.ok) return await fail(ctx, state, "paths", res.error, now, res.problem);
 
-	const today = utcDay(now);
+	const today = recent.until;
 	const fetched = new Map<string, DailyRow>();
 	for (const row of res.value) {
 		fetched.set(dailyId(row.date, row.path), {
@@ -854,11 +894,12 @@ export async function runReconcile(
 	ctx: PluginContext,
 	retentionDays: number,
 	now: Date = new Date(),
+	zone: string = DEFAULT_TIME_ZONE,
 ): Promise<{ deleted: number; more: boolean }> {
 	const daily = dailyStore(ctx);
 	if (!daily) return { deleted: 0, more: false };
 
-	const cutoff = utcDay(new Date(now.getTime() - retentionDays * 86_400_000));
+	const cutoff = addDays(localDay(now, zone), -retentionDays);
 
 	let deleted = 0;
 	let more = true;
@@ -883,11 +924,10 @@ async function suggestSite(
 	provider: Provider,
 	state: SyncState,
 	now: Date,
+	zone: string,
 ): Promise<SyncOutcome> {
-	const range: DateRange = {
-		since: utcDay(new Date(now.getTime() - 30 * 86_400_000)),
-		until: utcDay(now),
-	};
+	const today = localDay(now, zone);
+	const range: DateRange = { since: addDays(today, -30), until: today };
 	const res = await provider.discoverSites(range);
 
 	const found = res.ok
@@ -947,15 +987,33 @@ async function writeRollup(ctx: PluginContext, overview: Overview, today: Day, n
 
 /**
  * Clear the previous provider's numbers after a switch, in bounded batches.
+ * Days keyed in another time zone are cleared the same way (see `runSync`).
  *
  * `rollup` and `daily` are emptied; `entries` keeps its rows, because the
  * path-to-entry index describes the site's content rather than anybody's
  * traffic, and only has its view counts reset. A large store takes several
- * ticks; until the wipe completes, `state.provider` still names the old
- * provider, so every tick resumes it.
+ * ticks. Until the wipe completes, `state.provider` and `state.dayZone`
+ * still name the old provider and zone, so every tick resumes it.
+ *
+ * Deleting is what lets frozen rows be rebuilt: nothing compares a fresh
+ * day against a stored one that is gone. The state that follows has no
+ * history pass and no overview, so the history pass reads the days again,
+ * newest first, back to the retention limit.
+ *
+ * With a scheduler, a wipe that does not finish in one run keeps a call
+ * back and spends it on the next chained run (`CATCH_UP_TASKS`), so a large
+ * store is cleared a minute at a time rather than at the sync interval.
  */
-async function runWipe(ctx: PluginContext, state: SyncState, target: ProviderId, now: Date): Promise<SyncOutcome> {
-	let calls = WIPE_CALLS;
+async function runWipe(
+	ctx: PluginContext,
+	state: SyncState,
+	target: ProviderId,
+	zone: string,
+	now: Date,
+	catchUp?: string,
+): Promise<SyncOutcome> {
+	const chain = ctx.cron ? wipeChain(state, now, catchUp) : null;
+	let calls = WIPE_CALLS - (chain ? 1 : 0);
 	let finished = true;
 
 	for (const store of [rollupStore(ctx), dailyStore(ctx)]) {
@@ -989,11 +1047,12 @@ async function runWipe(ctx: PluginContext, state: SyncState, target: ProviderId,
 						item.data.views7 !== 0 ||
 						item.data.views30 !== 0 ||
 						Boolean(item.data.recentViews) ||
-						Boolean(item.data.olderViews),
+						Boolean(item.data.olderViews) ||
+						item.data.olderDay !== undefined,
 				)
 				.map((item) => ({
 					id: item.id,
-					data: { ...item.data, views7: 0, views30: 0, recentViews: 0, olderViews: 0 },
+					data: { ...item.data, views7: 0, views30: 0, recentViews: 0, olderViews: 0, olderDay: undefined },
 				}));
 			if (reset.length > 0) {
 				await entries.putMany(reset);
@@ -1006,13 +1065,15 @@ async function runWipe(ctx: PluginContext, state: SyncState, target: ProviderId,
 	}
 
 	if (!finished) {
-		await writeState(ctx, { ...state, wipeCursor: cursor });
+		await writeState(ctx, { ...state, wipeCursor: cursor, ...(chain && { chain }) });
+		if (chain && ctx.cron) await ctx.cron.schedule(chain.next, { schedule: chain.at });
 		return { phase: state.phase, ok: true, written: 0, skipped: 0 };
 	}
 
 	await writeState(ctx, {
 		phase: "overview",
 		provider: target,
+		dayZone: zone,
 		index: state.index,
 		indexComplete: state.indexComplete,
 		indexed: state.indexed,
@@ -1021,6 +1082,19 @@ async function runWipe(ctx: PluginContext, state: SyncState, target: ProviderId,
 		collectionLabels: state.collectionLabels,
 	});
 	return { phase: "overview", ok: true, written: 0, skipped: 0 };
+}
+
+/**
+ * The chained run a wipe schedules, as `chainFor` decides it for a slot: a
+ * chained run always continues, and any other run starts a chain only when
+ * none is pending.
+ */
+function wipeChain(state: SyncState, now: Date, catchUp?: string): { next: string; at: string } | null {
+	const at = new Date(now.getTime() + CATCH_UP_DELAY_MS).toISOString();
+	if (catchUp) return { next: catchUp === CATCH_UP_TASKS[0] ? CATCH_UP_TASKS[1] : CATCH_UP_TASKS[0], at };
+	const pending = state.chain && now.getTime() < Date.parse(state.chain.at) + CATCH_UP_PENDING_MS;
+	if (pending) return null;
+	return { next: state.chain?.next ?? CATCH_UP_TASKS[0], at };
 }
 
 async function fail(

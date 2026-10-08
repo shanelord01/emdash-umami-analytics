@@ -2,7 +2,7 @@ import { validateBlocks, type StatsBlock, type TableBlock } from "@emdash-cms/bl
 import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash-cms/plugin-test";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { addDays, utcDay } from "../src/sync/window.js";
+import { addDays, DEFAULT_TIME_ZONE, localDay } from "../src/sync/window.js";
 
 /**
  * Demo data through the real sandbox, bridge and storage.
@@ -41,7 +41,7 @@ function tick(runtime: PluginRuntimeTestHost) {
 describe("demo data", () => {
 	it("fills 90 days of history on the first refresh, and says it is demo data", async () => {
 		host = await demoHost();
-		const today = utcDay(new Date());
+		const today = localDay(new Date(), DEFAULT_TIME_ZONE);
 
 		const response = await refreshAndRun(host);
 		expect(response.toast).toMatchObject({ type: "success" });
@@ -93,7 +93,7 @@ describe("demo data", () => {
 			});
 		}
 
-		const today = utcDay(new Date());
+		const today = localDay(new Date(), DEFAULT_TIME_ZONE);
 		let pathsRan = false;
 		for (let i = 0; i < 12 && !pathsRan; i++) {
 			await tick(host);
@@ -106,7 +106,7 @@ describe("demo data", () => {
 		// Left in place, demo numbers would render as if they were the
 		// site's real traffic the moment Umami was configured.
 		host = await demoHost();
-		const today = utcDay(new Date());
+		const today = localDay(new Date(), DEFAULT_TIME_ZONE);
 		await refreshAndRun(host);
 		await expect(host.inspect.storage.get("rollup", today)).resolves.not.toBeNull();
 

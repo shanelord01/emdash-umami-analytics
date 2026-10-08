@@ -149,6 +149,12 @@
 				"label": "Hostnames to count",
 				"description": "Comma-separated. Leave empty to use the site URL and its www form. Any other hostname the website reports, a preview domain for one, is not counted."
 			},
+			"timeZone": {
+				"type": "string",
+				"label": "Time zone",
+				"default": "Australia/Sydney",
+				"description": "The time zone your days are counted in, as an IANA name such as Australia/Sydney, Europe/Berlin or UTC. Use the one set for the website in Umami, so both show the same days. A name that is not recognised counts as Australia/Sydney. Changing it clears the stored numbers, which are then read again."
+			},
 			"syncInterval": {
 				"type": "select",
 				"label": "Sync every",

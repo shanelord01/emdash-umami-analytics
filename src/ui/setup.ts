@@ -25,7 +25,7 @@ import { normalizeHost } from "../index/paths.js";
 import type { Result, Site } from "../providers/types.js";
 import { readSettings, type AnalyticsSettings } from "../settings.js";
 import { buildProvider, readState, REFRESH_TASK, SYNC_TASK, WAITING_KEY, type SyncState } from "../sync/scheduler.js";
-import { addDays, utcDay } from "../sync/window.js";
+import { addDays, localDay } from "../sync/window.js";
 import { actions, banner, button, code, context, header, table, type AnalyticsBlock } from "./blocks.js";
 import { formatAge, formatCount } from "./format.js";
 import { RANGE_ACTION, SETUP_ACTION } from "./page.js";
@@ -95,7 +95,7 @@ export async function loadSetup(ctx: PluginContext, now: Date): Promise<SetupFac
 	let discovery: Result<Site[]> | null = null;
 	if (settings.ok && settings.settings.provider !== "demo") {
 		const provider = buildProvider(ctx, settings.settings);
-		const today = utcDay(now);
+		const today = localDay(now, settings.settings.timeZone);
 		discovery = provider
 			? await provider.discoverSites({ since: addDays(today, -(DISCOVERY_DAYS - 1)), until: today })
 			: null;

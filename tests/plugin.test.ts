@@ -3,7 +3,7 @@ import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { SyncState } from "../src/sync/scheduler.js";
-import { addDays, utcDay } from "../src/sync/window.js";
+import { addDays, DEFAULT_TIME_ZONE, localDay } from "../src/sync/window.js";
 import { newHost as hostFor, respondUmamiOverview, UMAMI_WEBSITE, umamiUrl } from "./host.js";
 
 /**
@@ -329,7 +329,7 @@ describe("the analytics page on day one", () => {
 		// Waiting for the store would take hours to days on a fresh install,
 		// while the provider's own dashboard answers at once.
 		host = await hostFor("umami");
-		const today = utcDay(new Date());
+		const today = localDay(new Date(), DEFAULT_TIME_ZONE);
 		await respondUmamiOverview(host, { since: addDays(today, -6), today: [4321, 1234], yesterday: [0, 0], paths: [["/blog/hello/", 999, 500]] });
 
 		const response = await host.admin.act("/analytics", "analytics:range", { value: 7 });
@@ -346,7 +346,7 @@ describe("the analytics page on day one", () => {
 		// window only. Umami has no such window, so top entries, referrers
 		// and countries cover all 30 days.
 		host = await hostFor("umami");
-		const today = utcDay(new Date());
+		const today = localDay(new Date(), DEFAULT_TIME_ZONE);
 		await respondUmamiOverview(host, { since: addDays(today, -29) });
 
 		await host.admin.act("/analytics", "analytics:range", { value: 30 });

@@ -28,7 +28,7 @@ import { entriesStore, dailyStore, rollupStore, BIND_LIMIT } from "../store/acce
 import type { LabelledRow, Overview, PropertyBreakdown, Provider } from "../providers/types.js";
 import { historyReaches, sumWindow, type EntryRow, type RollupRow } from "../store/rows.js";
 import type { SyncState } from "../sync/scheduler.js";
-import { addDays, daysBetween, utcDay, type Day } from "../sync/window.js";
+import { addDays, dayStartMs, daysBetween, localDay, stateZone, type Day } from "../sync/window.js";
 import {
 	actions,
 	button,
@@ -133,7 +133,7 @@ export async function loadPage(
 	provider?: Provider | null,
 	properties: string[] = [],
 ): Promise<PageInput> {
-	const today = utcDay(now);
+	const today = localDay(now, stateZone(state));
 
 	const rangeStart = addDays(today, -(range - 1));
 	// One day short of the exact window: measured on eisbachcode.de,
@@ -272,7 +272,8 @@ export function summarizeDaily(
 export function renderPage(input: PageInput): AnalyticsBlock[] {
 	const { state, range, rollups, now, locale } = input;
 	const lang = langOf(locale);
-	const today = utcDay(now);
+	const zone = stateZone(state);
+	const today = localDay(now, zone);
 
 	if (rollups.length === 0) {
 		return [
@@ -311,7 +312,9 @@ export function renderPage(input: PageInput): AnalyticsBlock[] {
 	);
 
 	const days = [...inRange].sort((a, b) => daysBetween(b.date, a.date));
-	const at = (day: Day) => Date.parse(`${day}T00:00:00.000Z`);
+	// Each point sits at its day's local midnight, which the chart shows as
+	// that day to a reader in the site's time zone.
+	const at = (day: Day) => dayStartMs(day, zone);
 	out.push(
 		timeseries(
 			[
@@ -337,8 +340,8 @@ export function renderPage(input: PageInput): AnalyticsBlock[] {
 		.join(" · ");
 	if (notes) out.push(context(notes));
 
-	out.push(...engagementSection(rollups, range, today, lang));
-	out.push(...readsChart(state.reads, range, today, now, lang));
+	out.push(...engagementSection(rollups, range, today, lang, zone));
+	out.push(...readsChart(state.reads, range, today, now, lang, zone));
 
 	out.push(header(t(lang, "topEntries")));
 	out.push(context(coverageText(input.topEntries, range, lang, Boolean(input.breakdowns))));

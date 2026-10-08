@@ -2,7 +2,7 @@
 Most setup mistakes give zeroes and no error. Open Plugins > Analytics and select Check setup: it names the fix for each problem it finds.
 
 **Why do my numbers differ from Umami's dashboard?**
-Days are UTC, while Umami shows days in your timezone, so daily figures differ near midnight. Pages under `/_emdash` are left out, and the totals count only the hostnames in Hostnames to count (your site URL and its `www` form unless changed).
+Days follow the Time zone setting: use the website's zone in Umami, or daily figures differ near midnight. Pages under `/_emdash` are left out, and the totals count only the hostnames in Hostnames to count (your site URL and its `www` form unless changed).
 
 **Does it work with Umami Cloud?**
 It follows Umami's published API, but has not been run against a Cloud account. Please report what you find in the repository's issues.

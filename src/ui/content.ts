@@ -31,7 +31,7 @@ import { langOf, t, type Lang } from "../i18n.js";
 import { dailyStore, entriesStore, oldestDay, BIND_LIMIT, type Typed } from "../store/access.js";
 import { isPublished, type EntryRow } from "../store/rows.js";
 import { indexOutdated, type SyncState } from "../sync/scheduler.js";
-import { addDays, daysBetween, utcDay, type Day } from "../sync/window.js";
+import { addDays, daysBetween, localDay, stateZone, type Day } from "../sync/window.js";
 import { actions, button, context, empty, link, table, type AnalyticsBlock } from "./blocks.js";
 import { formatCount, formatDay } from "./format.js";
 import { PAGE_PATH } from "./page.js";
@@ -430,7 +430,7 @@ async function readMembers(entries: Typed<EntryRow>, groups: string[]): Promise<
 
 function historyNote(input: ContentInput, lang: Lang): string[] {
 	if (!input.historySince) return [];
-	const thirtyStart = addDays(utcDay(input.now), -29);
+	const thirtyStart = addDays(localDay(input.now, stateZone(input.state)), -29);
 	if (daysBetween(thirtyStart, input.historySince) <= 0) return [];
 	return [t(lang, "historyThirty", { date: formatDay(input.historySince, lang) })];
 }
