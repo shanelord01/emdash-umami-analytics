@@ -21,7 +21,7 @@ import type { PluginContext } from "emdash/plugin";
 import { actions, button, context, empty, link, stats, table, type AnalyticsBlock } from "./blocks.js";
 import { entriesStore, rollupStore, BIND_LIMIT } from "../store/access.js";
 import { historyReaches, type EntryRow, type RollupRow } from "../store/rows.js";
-import { addDays, daysBetween, utcDay, type Day } from "../sync/window.js";
+import { addDays, daysBetween, localDay, stateZone, type Day } from "../sync/window.js";
 import { WIDGET_DAYS, type SyncState } from "../sync/scheduler.js";
 import { langOf, t, type Lang } from "../i18n.js";
 import { comparisonText, formatCount, trendOf } from "./format.js";
@@ -50,7 +50,7 @@ export async function loadWidget(ctx: PluginContext, state: SyncState, now: Date
 	const rollup = rollupStore(ctx);
 	const entries = entriesStore(ctx);
 
-	const since = addDays(utcDay(now), -(WIDGET_DAYS * 2 - 1));
+	const since = addDays(localDay(now, stateZone(state)), -(WIDGET_DAYS * 2 - 1));
 	const page = await rollup?.query({
 		where: { date: { gte: since } },
 		orderBy: { date: "asc" },
@@ -72,7 +72,7 @@ export async function loadWidget(ctx: PluginContext, state: SyncState, now: Date
 export function renderWidget(input: WidgetInput): AnalyticsBlock[] {
 	const { state, rollups, entriesByPath, now, locale } = input;
 	const lang = langOf(locale);
-	const today = utcDay(now);
+	const today = localDay(now, stateZone(state));
 
 	const current = sumRange(rollups, addDays(today, -(WIDGET_DAYS - 1)), today);
 	const previousStart = addDays(today, -(WIDGET_DAYS * 2 - 1));

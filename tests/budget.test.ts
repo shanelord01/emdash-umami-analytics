@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { HISTORY_VERSION } from "../src/sync/history.js";
 import { WAITING_KEY, type SyncState } from "../src/sync/scheduler.js";
-import { addDays } from "../src/sync/window.js";
+import { addDays, DEFAULT_TIME_ZONE } from "../src/sync/window.js";
 import { PAGE_REFRESH_ACTION, RANGE_ACTION, SETUP_ACTION } from "../src/ui/page.js";
 import { TOOL_ROUTES } from "../src/tools/load.js";
 import { bridgeCalls, failNextCall } from "./bridge-calls.js";
@@ -149,6 +149,31 @@ describe("sync ticks", () => {
 		await expect(host.inspect.storage.list("rollup")).resolves.toEqual([]);
 		await expect(host.inspect.storage.list("daily")).resolves.toEqual([]);
 		await expect(host.inspect.storage.get("entries", paths[39]!)).resolves.toMatchObject({ views7: 0, views30: 0 });
+	});
+
+	it("every tick of a wipe of days keyed in UTC by 0.1.2, chained runs included", async () => {
+		host = await newHost();
+		const paths = pathsOf(40);
+		await seedEntries(host, paths, 12);
+		await seedRollup(host, 150);
+		await seedDaily(host, paths, daysBack(10));
+		const { dayZone: _zone, ...utc } = synced;
+		await setState(host, utc);
+
+		let ticks = 0;
+		let state: SyncState | null = null;
+		for (; ticks < 20 && state?.dayZone === undefined; ticks++) {
+			// Every other run as the chained task the wipe schedules, which
+			// spends the call it kept back on scheduling the next.
+			const name = ticks % 2 === 0 ? "sync" : (state?.chain?.next ?? "sync");
+			const calls = await bridgeCalls(tick(host, name));
+			expect(calls.length, `tick ${ticks}: ${calls.join(", ")}`).toBeLessThanOrEqual(LIMIT);
+			state = await host.inspect.kv.get<SyncState>("state");
+		}
+
+		expect(state?.dayZone).toBe(DEFAULT_TIME_ZONE);
+		expect(ticks).toBeGreaterThan(1);
+		await expect(host.inspect.storage.list("daily")).resolves.toEqual([]);
 	});
 
 	it("a reconcile run with more to prune than one run can delete", async () => {

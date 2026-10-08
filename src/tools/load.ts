@@ -3,8 +3,8 @@
  *
  * Each call is one sandboxed route invocation with ten bridge calls, so
  * nothing here asks the provider live. The numbers are the ones the sync
- * stored, and every answer says which UTC days they cover, where stored
- * history starts and when the last sync ran, so an agent can tell thin
+ * stored, and every answer says which days they cover (days in the site's
+ * time zone, the Time zone setting), where stored history starts and when the last sync ran, so an agent can tell thin
  * data from a full window.
  *
  * The input schemas in `./declare.ts` are build metadata: the build
@@ -22,7 +22,7 @@ import { normalizePath } from "../index/paths.js";
 import { dailyStore, entriesStore, oldestDay, rollupStore, BIND_LIMIT, type Typed } from "../store/access.js";
 import { isPublished, sumWindow, type EntryRow, type RollupRow } from "../store/rows.js";
 import { indexOutdated, readState, type SyncState } from "../sync/scheduler.js";
-import { addDays, daysBetween, utcDay, type Day } from "../sync/window.js";
+import { addDays, daysBetween, localDay, stateZone, type Day } from "../sync/window.js";
 import { loadPanel } from "../ui/panel.js";
 
 export const TOOL_ROUTES = {
@@ -57,9 +57,9 @@ const ROLLUP_PAGES = 2;
 
 export interface ToolWindow {
 	days: number;
-	/** First UTC day of the window. */
+	/** First day of the window, in the site's time zone. */
 	since: Day;
-	/** Last UTC day of the window: today, still counting. */
+	/** Last day of the window: today in the site's time zone, still counting. */
 	until: Day;
 	/** True when stored history starts after `since`, so the numbers cover fewer days. */
 	partial: boolean;
@@ -190,7 +190,7 @@ export function storageCursor(view: ListInput, cursor: string): string {
 export async function topEntries(ctx: PluginContext, input: unknown, now: Date): Promise<EntryListResult> {
 	const view = parseListInput("top", input);
 	const { state, historySince, entries } = await listContext(ctx);
-	const base = listBase(view, state, historySince, utcDay(now));
+	const base = listBase(view, state, historySince, now);
 	if (!entries) return { ...base, items: [] };
 
 	const { rows, nextCursor } = await collect(entries, view, "desc", (row) => (isPublished(row) ? "take" : "skip"));
@@ -208,7 +208,7 @@ export async function topEntries(ctx: PluginContext, input: unknown, now: Date):
 export async function unviewedEntries(ctx: PluginContext, input: unknown, now: Date): Promise<EntryListResult> {
 	const view = parseListInput("unviewed", input);
 	const { state, historySince, entries } = await listContext(ctx);
-	const base = listBase(view, state, historySince, utcDay(now));
+	const base = listBase(view, state, historySince, now);
 	if (!entries) return { ...base, items: [] };
 
 	const key = sortKey(view.days);
@@ -274,7 +274,7 @@ async function collect(
 export async function entryViews(ctx: PluginContext, input: unknown, now: Date): Promise<EntryViewsResult> {
 	const record = asRecord(input);
 	const [state, historySince] = await Promise.all([readState(ctx), oldestDay(dailyStore(ctx))]);
-	const today = utcDay(now);
+	const today = localDay(now, stateZone(state));
 	const base = {
 		windows: { views7: windowOf(7, today, historySince), views30: windowOf(30, today, historySince) },
 		historySince,
@@ -340,7 +340,7 @@ export async function siteTotals(ctx: PluginContext, input: unknown, now: Date):
 	const days = pickDays(asRecord(input).days, TOTALS_DAYS);
 	const rollup = rollupStore(ctx);
 	const [state, historySince] = await Promise.all([readState(ctx), oldestDay(rollup)]);
-	const today = utcDay(now);
+	const today = localDay(now, stateZone(state));
 	const window = windowOf(days, today, historySince);
 
 	const stored: RollupRow[] = [];
@@ -416,9 +416,9 @@ async function listContext(ctx: PluginContext) {
 	return { state, historySince, entries: entriesStore(ctx) };
 }
 
-function listBase(view: ListInput, state: SyncState, historySince: Day | null, today: Day) {
+function listBase(view: ListInput, state: SyncState, historySince: Day | null, now: Date) {
 	return {
-		window: windowOf(view.days, today, historySince),
+		window: windowOf(view.days, localDay(now, stateZone(state)), historySince),
 		collection: view.collection,
 		historySince,
 		indexComplete: indexComplete(state),
