@@ -41,7 +41,7 @@ import {
 	PAGE_PATH,
 	PAGE_REFRESH_ACTION,
 	parseRange,
-	RANGE_ACTION,
+	parseRangeAction,
 	renderPage,
 	SETUP_ACTION,
 	type RangeDays,
@@ -295,9 +295,8 @@ function parseInteraction(input: unknown): Interaction {
 		if (isAction && record.action_id === PAGE_REFRESH_ACTION) {
 			return { surface: "page", kind: "refresh", range: parseRange(record.value) };
 		}
-		if (isAction && record.action_id === RANGE_ACTION) {
-			return { surface: "page", kind: "load", range: parseRange(record.value) };
-		}
+		const range = isAction ? parseRangeAction(record.action_id, record.value) : null;
+		if (range !== null) return { surface: "page", kind: "load", range };
 		if (isAction && record.action_id === SETUP_ACTION) {
 			return { surface: "page", kind: "setup", range: parseRange(record.value) };
 		}

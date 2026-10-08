@@ -9,8 +9,8 @@ import { engagementByDay, engagementOver, engagementReaches } from "../store/eng
 import type { RollupRow } from "../store/rows.js";
 import type { ReadSnapshot } from "../sync/reads.js";
 import { addDays, dayStartMs, daysBetween, DEFAULT_TIME_ZONE, type Day } from "../sync/window.js";
-import { columns, context, header, stats, timeseries, type AnalyticsBlock } from "./blocks.js";
-import { comparisonText, formatAge, formatDay, formatDuration, formatPercent, formatRatio, pointsText, trendOf } from "./format.js";
+import { coloured, columns, context, header, stats, timeseries, type AnalyticsBlock } from "./blocks.js";
+import { chartKey, comparisonText, formatAge, formatDay, formatDuration, formatPercent, formatRatio, pointsText, trendOf } from "./format.js";
 
 /**
  * A chart point's time: the day's local midnight in the site's zone, which
@@ -153,12 +153,15 @@ export function readsChart(
 	const inRange = snapshot.daily.filter((row) => within(row.date, start, today));
 	if (!inRange.some((row) => row.counts.some((n) => n > 0))) return [];
 
-	const series = snapshot.depths.map((depth, i) => ({
-		name: depth,
-		data: inRange.map((row) => [at(row.date, zone), row.counts[i] ?? 0] as [number, number]),
-	}));
+	const series = coloured(
+		snapshot.depths.map((depth, i) => ({
+			name: depth,
+			data: inRange.map((row) => [at(row.date, zone), row.counts[i] ?? 0] as [number, number]),
+		})),
+	);
 	const age = formatAge(snapshot.at, now, lang) ?? t(lang, "recently");
 	const notes = [
+		...(series.length > 1 ? [`${chartKey(series.map((s) => s.name), lang)}.`] : []),
 		t(lang, "readsNote", { event: snapshot.event, property: snapshot.depthProperty, age }),
 		...(snapshot.partial ? [t(lang, "readsPartial")] : []),
 	];

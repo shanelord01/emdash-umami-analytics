@@ -57,7 +57,7 @@ export async function loadWidget(ctx: PluginContext, state: SyncState, now: Date
 		limit: BIND_LIMIT,
 	});
 
-	const paths = (state.topPaths ?? []).slice(0, 5).map((p) => p.path);
+	const paths = weeklyTopPaths(state, localDay(now, stateZone(state))).map((p) => p.path);
 	const entriesByPath = paths.length > 0 && entries ? await entries.getMany(paths) : new Map<string, EntryRow>();
 
 	return {
@@ -118,7 +118,7 @@ export function renderWidget(input: WidgetInput): AnalyticsBlock[] {
 	// Engagement from the same rows: no read beyond the two above.
 	out.push(...(engagementStats(rollups, WIDGET_DAYS, today, lang)?.blocks ?? []));
 
-	const topPaths = state.topPaths ?? [];
+	const topPaths = weeklyTopPaths(state, today);
 	if (topPaths.length > 0) {
 		out.push(
 			table({
@@ -129,7 +129,7 @@ export function renderWidget(input: WidgetInput): AnalyticsBlock[] {
 					{ key: "path", label: t(lang, "colPath"), format: "code" },
 					{ key: "views", label: t(lang, "colViews"), format: "number" },
 				],
-				rows: topPaths.slice(0, 5).map((row) => ({
+				rows: topPaths.map((row) => ({
 					// The entry title where the join knows it, the raw path
 					// otherwise: plenty of real traffic hits paths that are not
 					// entries at all, and those are still worth showing.
@@ -151,6 +151,24 @@ export function renderWidget(input: WidgetInput): AnalyticsBlock[] {
 
 	out.push(refreshRow(lang));
 	return out;
+}
+
+/**
+ * The top paths, when the snapshot covers the week the cards count.
+ *
+ * The first overview of a provider that backfills (demo data) reads its
+ * whole exact window, and a snapshot from such a run counted ninety days
+ * under cards that say seven. A snapshot that starts six days before
+ * today is the cards' week. One a day older is yesterday's week, kept
+ * until the first overview after midnight. Anything else is left out
+ * rather than shown under the wrong label. A snapshot without a start day
+ * comes from before the start was stored, and is shown as before.
+ */
+export function weeklyTopPaths(state: SyncState, today: Day): NonNullable<SyncState["topPaths"]> {
+	const top = (state.topPaths ?? []).slice(0, 5);
+	if (!state.snapshotSince) return top;
+	const span = daysBetween(state.snapshotSince, today);
+	return span === WIDGET_DAYS - 1 || span === WIDGET_DAYS ? top : [];
 }
 
 function refreshRow(lang: Lang) {

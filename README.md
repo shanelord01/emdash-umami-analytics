@@ -24,6 +24,10 @@ what you find in the repository's issues.
   on Cloudflare Workers.
 - The registry page has tabs (description, installation, FAQ, changelog
   and security) and a banner.
+- Admin fixes: no more "no page is matched" when every entry is matched,
+  the dashboard's top pages cover the same 7 days as its cards, per-entry
+  30-day figures are labelled with the day the stored history starts, the
+  daily chart names its series, and a long visit time stays on one line.
 - The MCP tools now describe their days in your time zone, so EmDash
   turns Agent access off after the update. Turn it on again under
   Plugins.

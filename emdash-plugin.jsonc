@@ -23,6 +23,7 @@
 	"release": {
 		"requires": { "env:emdash": ">=1.0.1" },
 		"artifacts": {
+			"icon": { "file": "./images/icon.webp" },
 			"banner": { "file": "./images/banner.webp" }
 		}
 	},

@@ -157,8 +157,36 @@ describe("renderContent", () => {
 	});
 
 	it("says where 30-day figures start when the store is younger than 30 days", () => {
-		expect(texts(renderContent(input({ historySince: "2026-09-16" }))).join(" ")).toContain("30-day figures count from");
-		expect(texts(renderContent(input({ historySince: "2026-08-01" }))).join(" ")).not.toContain("30-day figures");
+		expect(texts(renderContent(input({ historySince: "2026-09-16" }))).join(" ")).toContain("Figures count from Sep 16, 2026");
+		expect(texts(renderContent(input({ historySince: "2026-08-01" }))).join(" ")).not.toContain("Figures count from");
+	});
+
+	it("labels a column by the day its figures start when the store does not reach back its whole window", () => {
+		const labels = (since: string) =>
+			Object.fromEntries(
+				(find(renderContent(input({ historySince: since })), "table")[0]!.columns as Array<{ key: string; label: string }>).map(
+					(c) => [c.key, c.label],
+				),
+			);
+		// Today is 24 September: the 30-day window starts on the 26th of August, the 7-day one on the 18th of September.
+		expect(labels("2026-09-16")).toMatchObject({ views7: "7 days", views30: "Since Sep 16, 2026" });
+		expect(labels("2026-09-20")).toMatchObject({ views7: "Since Sep 20, 2026", views30: "Since Sep 20, 2026" });
+		expect(labels("2026-08-26")).toMatchObject({ views7: "7 days", views30: "30 days" });
+		// The sort line no longer says "last 30 days" for a shorter history.
+		expect(texts(renderContent(input({ historySince: "2026-09-16" })))[0]).toMatch(/^Most viewed first\. /);
+	});
+
+	it("gives First page an id apart from the button of the current mode", () => {
+		const blocks = renderContent(input({ multilingual: true, view: { ...DEFAULT_VIEW, offset: 50, cursor: "c" } }));
+		for (const group of find(blocks, "actions")) {
+			const ids = (group.elements as Array<{ action_id?: string }>).map((e) => e.action_id).filter(Boolean);
+			expect(new Set(ids).size).toBe(ids.length);
+		}
+		const first = find(blocks, "button").find((b) => b.label === "First page")!;
+		expect(parseContentInput({ type: "block_action", action_id: first.action_id })).toMatchObject({
+			view: { offset: 0 },
+			rebuild: false,
+		});
 	});
 
 	it("says which rows a later page shows, and offers the first page", () => {

@@ -32,6 +32,7 @@ import { addDays, dayStartMs, daysBetween, localDay, stateZone, type Day } from 
 import {
 	actions,
 	button,
+	coloured,
 	columns,
 	context,
 	empty,
@@ -43,13 +44,18 @@ import {
 	type AnalyticsBlock,
 } from "./blocks.js";
 import { langOf, t, type Lang } from "../i18n.js";
-import { comparisonText, formatCount, formatDay, trendOf } from "./format.js";
+import { chartKey, comparisonText, formatCount, formatDay, trendOf } from "./format.js";
 import { emptyReason, statusLine } from "./status.js";
 import { engagementSection, readsChart } from "./engagement.js";
 
 export const PAGE_PATH = "/analytics";
 /** The per-entry page (`./content.ts`), named here to keep the import one-way. */
 const CONTENT_PAGE_PATH = "/analytics/content";
+/**
+ * The range buttons' action id, before the range: `analytics:range:7`.
+ * The host keys the elements of an actions block by `action_id`, so three
+ * buttons sharing one id drew React's duplicate key warning.
+ */
 export const RANGE_ACTION = "analytics:range";
 export const PAGE_REFRESH_ACTION = "analytics:page:refresh";
 /** Opens the setup check (`./setup.ts`), carrying the range to return to. */
@@ -71,6 +77,22 @@ const DAILY_PAGES = 3;
 export function parseRange(value: unknown): RangeDays {
 	const n = typeof value === "string" ? Number(value) : value;
 	return (RANGES as readonly unknown[]).includes(n) ? (n as RangeDays) : DEFAULT_RANGE;
+}
+
+/** The action id of the button that shows `days`. */
+export function rangeAction(days: number): string {
+	return `${RANGE_ACTION}:${days}`;
+}
+
+/**
+ * The range a range button asks for, or null when `actionId` is not a
+ * range button. The range comes from the id (`analytics:range:7`); the
+ * plain `analytics:range` that 0.1.2 sent carries it in `value`.
+ */
+export function parseRangeAction(actionId: unknown, value: unknown): RangeDays | null {
+	if (actionId === RANGE_ACTION) return parseRange(value);
+	if (typeof actionId !== "string" || !actionId.startsWith(`${RANGE_ACTION}:`)) return null;
+	return parseRange(actionId.slice(RANGE_ACTION.length + 1));
 }
 
 export interface EntryTotals {
@@ -315,15 +337,13 @@ export function renderPage(input: PageInput): AnalyticsBlock[] {
 	// Each point sits at its day's local midnight, which the chart shows as
 	// that day to a reader in the site's time zone.
 	const at = (day: Day) => dayStartMs(day, zone);
-	out.push(
-		timeseries(
-			[
-				{ name: t(lang, "pageviews"), data: days.map((d) => [at(d.date), d.pageviews] as [number, number]) },
-				{ name: t(lang, "visits"), data: days.map((d) => [at(d.date), d.visits] as [number, number]) },
-			],
-			{ blockId: "analytics:chart", height: 300, gradient: true },
-		),
-	);
+	const series = coloured([
+		{ name: t(lang, "pageviews"), data: days.map((d) => [at(d.date), d.pageviews] as [number, number]) },
+		{ name: t(lang, "visits"), data: days.map((d) => [at(d.date), d.visits] as [number, number]) },
+	]);
+	out.push(timeseries(series, { blockId: "analytics:chart", height: 300, gradient: true }));
+	// The host draws no legend (see `SERIES_COLOURS`).
+	out.push(context(chartKey(series.map((s) => s.name), lang)));
 
 	const history = rollups.reduce<Day | undefined>(
 		(min, r) => (min === undefined || daysBetween(r.date, min) > 0 ? r.date : min),
@@ -445,7 +465,7 @@ function controls(input: PageInput, lang: Lang) {
 	// closed, and its label sets it out of line with the buttons beside it.
 	const elements = [
 		...RANGES.map((days) =>
-			button(RANGE_ACTION, t(lang, "rangeDays", { count: days }), {
+			button(rangeAction(days), t(lang, "rangeDays", { count: days }), {
 				style: days === input.range ? "primary" : "secondary",
 				value: days,
 			}),
@@ -505,7 +525,10 @@ function countryName(locale: string | undefined): (code: string) => string {
 }
 
 function coverageText(top: TopEntries, range: RangeDays, lang: Lang, live: boolean): string {
-	if (!top.coveredSince) return t(lang, "coverageRange", { days: range });
+	// The live answer counts every day of the range. Analytics per entry
+	// sums the stored days instead, so it says where they start, and this
+	// line says which of the two figures this is.
+	if (!top.coveredSince) return t(lang, live ? "coverageProvider" : "coverageRange", { days: range });
 	const date = formatDay(top.coveredSince, lang);
 	if (live) return t(lang, "coverageLive", { date });
 	return t(lang, top.partial ? "coveragePartial" : "coverageMatched", { date });

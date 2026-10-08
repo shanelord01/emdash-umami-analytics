@@ -82,6 +82,11 @@ export interface BootstrapResult {
 	indexed: number;
 	/** Existing rows rewritten because their entry changed. */
 	repaired: number;
+	/**
+	 * Entries on this page whose row is now stored: the rows added, and the
+	 * ones the content hooks or an earlier walk had stored already.
+	 */
+	matched: number;
 	/** Display labels of the routable collections, by slug; empty when none were listed. */
 	labels: Record<string, string>;
 	skipped: number;
@@ -100,7 +105,7 @@ export async function bootstrapIndex(
 	now: Date,
 	pageSize: number = INDEX_PAGE_SIZE,
 ): Promise<BootstrapResult> {
-	const done: BootstrapResult = { next: undefined, indexed: 0, repaired: 0, labels: {}, skipped: 0, complete: true };
+	const done: BootstrapResult = { next: undefined, indexed: 0, repaired: 0, matched: 0, labels: {}, skipped: 0, complete: true };
 	const entries = entriesStore(ctx);
 	if (!entries || !ctx.content?.getPublicUrl || !ctx.schema) return done;
 
@@ -174,6 +179,7 @@ export async function bootstrapIndex(
 		next,
 		indexed: added,
 		repaired: writes.length - added,
+		matched: rows.length,
 		labels,
 		skipped: skipped + (rows.length - writes.length),
 		complete: next === undefined,

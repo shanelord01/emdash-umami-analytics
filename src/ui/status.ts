@@ -56,10 +56,25 @@ function errorText(state: SyncState, lang: ReturnType<typeof langOf>): string | 
 }
 
 /**
- * The index walk finished without matching a single entry. Paths still
- * show, untitled, so without saying so the numbers look plausible while
- * every per-entry figure stays empty.
+ * The index walk finished and no published entry is in the index. Paths
+ * still show, untitled, so without saying so the numbers look plausible
+ * while every per-entry figure stays empty.
  */
 export function nothingMatched(state: SyncState): boolean {
-	return Boolean(state.indexComplete) && (state.indexed ?? 0) === 0;
+	return Boolean(state.indexComplete) && matchedCount(state) === 0;
+}
+
+/**
+ * Published entries in the index, or undefined while that is not known.
+ *
+ * Counted from storage by the index walk and every paths pass, so entries
+ * the content hooks stored before the walk reached them count too. `indexed`
+ * counts only the rows a walk added itself: on a site whose entries were
+ * all published after the plugin was installed it stays at 0, so it is
+ * trusted here only when it is above 0, for a state from before 0.1.3 that
+ * has not been counted yet.
+ */
+export function matchedCount(state: SyncState): number | undefined {
+	if (state.matched !== undefined) return state.matched;
+	return state.indexed ? state.indexed : undefined;
 }
