@@ -1,6 +1,6 @@
 {
 	"name": "emdash-umami-analytics",
-	"version": "0.1.2",
+	"version": "0.1.3",
 	"private": true,
 	"description": "EmDash plugin: Umami analytics on the dashboard and next to your content.",
 	"keywords": [

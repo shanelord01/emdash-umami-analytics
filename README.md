@@ -14,6 +14,10 @@ what you find in the repository's issues.
 
 ## What's new
 
+**0.1.3, 9 October 2026**
+- The registry page has tabs (description, installation, FAQ, changelog
+  and security) and a banner.
+
 **0.1.2, 1 October 2026**
 - Engagement: bounce rate, average visit and pages per visit beside the
   totals, with charts on the Analytics page.

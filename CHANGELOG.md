@@ -1,5 +1,11 @@
 # emdash-umami-analytics
 
+## 0.1.3
+
+The registry page has tabs: description, installation, FAQ, changelog and security, from the files in `docs/registry/`. It also has a banner, drawn at the registry's 3:1 shape so link previews show it whole.
+
+Nothing in the plugin itself changed. No new permissions and no MCP tool output changes, so Agent access stays on after the update.
+
 ## 0.1.2
 
 Engagement beside the totals: bounce rate, average visit and pages per visit, against the period before, on the Analytics page (with a chart each for bounce rate and visit time by day), on the dashboard card and in the `site_totals` MCP tool. It comes with each day's totals at no extra request. Days stored by an earlier version are read again in the background.
