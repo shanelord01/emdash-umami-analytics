@@ -24,6 +24,9 @@ what you find in the repository's issues.
   on Cloudflare Workers.
 - The registry page has tabs (description, installation, FAQ, changelog
   and security) and a banner.
+- The MCP tools now describe their days in your time zone, so EmDash
+  turns Agent access off after the update. Turn it on again under
+  Plugins.
 
 **0.1.2, 1 October 2026**
 - Engagement: bounce rate, average visit and pages per visit beside the

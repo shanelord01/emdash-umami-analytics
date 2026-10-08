@@ -3,7 +3,7 @@
 - Days follow your time zone. They were UTC days, so a page view before about 10 am in Sydney counted on the day before. A new Time zone setting takes an IANA name and starts at Australia/Sydney. Set the website's zone in Umami.
 - On update the stored daily numbers, site totals and per-entry views are cleared once and read again from Umami, newest first, back to Keep daily rows for. Charts and views per entry refill over the catch-up: about two hours for 90 days and 100 entries on Node, at the Cron Trigger's pace on Cloudflare Workers. Changing the setting later does the same.
 - The registry page has tabs (description, installation, FAQ, changelog and security) and a banner.
-- No new permissions and no MCP tool changes, so Agent access stays on.
+- No new permissions. The MCP tools now describe their days in your time zone, so EmDash turns Agent access off after the update. Turn it on again under Plugins.
 
 ## 0.1.2, 1 October 2026
 

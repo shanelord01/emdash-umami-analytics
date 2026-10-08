@@ -10,7 +10,7 @@ What happens on update: the first sync finds a store keyed in UTC (0.1.2 recorde
 
 The registry page has tabs: description, installation, FAQ, changelog and security, from the files in `docs/registry/`. It also has a banner, drawn at the registry's 3:1 shape so link previews show it whole.
 
-No new permissions, and the new setting needs no approval. The MCP tools are unchanged, so Agent access stays on after the update. Their descriptions still call the days UTC days: the days they answer with are now in the Time zone setting.
+No new permissions, and the new setting needs no approval. The MCP tools' descriptions now say their days are in the Time zone setting, not UTC (`src/tools/declare.ts`: the day field, `until`, and the `days` window of `top_entries` and `site_totals`). That changes the manifest's `mcp.tools`, so EmDash turns Agent access off after the update. Turn it on again under Plugins.
 
 ## 0.1.2
 
