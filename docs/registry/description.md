@@ -1,3 +1,5 @@
+An unofficial plugin. It is not affiliated with, endorsed by or supported by Umami.
+
 Shows your Umami numbers inside the EmDash admin: site traffic on the dashboard, and page views next to the entries that earned them. For Umami Cloud and a self-hosted Umami from 3.4.0.
 
 - **Umami traffic card.** On the dashboard: visits, page views and engagement for the last seven days against the week before, and the five most viewed pages with their entries.
@@ -10,4 +12,4 @@ The plugin only reads. It never changes anything in Umami or in your content. De
 
 It is tested with a self-hosted Umami 3.4.0. The Umami Cloud connection follows Umami's published API and has not been run against a Cloud account yet.
 
-Based on the EmDash analytics plugin by Eisbachcode, under the MIT licence. It is not affiliated with Umami.
+Based on the EmDash analytics plugin by Eisbachcode, under the MIT licence.

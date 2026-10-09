@@ -1,5 +1,7 @@
 # Umami Analytics for EmDash
 
+An unofficial plugin. It is not affiliated with, endorsed by or supported by Umami.
+
 Shows your Umami numbers inside the EmDash admin: site traffic on the
 dashboard, and page views next to the entries that earned them. It works
 with Umami Cloud and with a self-hosted Umami.

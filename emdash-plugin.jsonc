@@ -48,7 +48,7 @@
 	// The registry profile refuses a description over 140 graphemes.
 	// `emdash-plugin validate` accepts up to 1,024 characters, so the failure
 	// only shows at `release setup` or publish.
-	"description": "Umami analytics on the EmDash dashboard and next to your content: traffic, top pages, referrers, countries and views per entry.",
+	"description": "Unofficial Umami plugin, not affiliated with Umami: traffic, top pages, referrers and views per entry in the EmDash admin.",
 	"keywords": ["analytics", "umami", "dashboard", "widget", "content"],
 
 	// Trust contract.
