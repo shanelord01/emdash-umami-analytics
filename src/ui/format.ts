@@ -8,6 +8,18 @@
  */
 
 import { langOf, t } from "../i18n.js";
+import { SERIES_COLOURS } from "./blocks.js";
+
+/**
+ * The line under a chart that names each series by its colour, for
+ * series coloured with `coloured()`: "Blue: Page views · Yellow: Visits".
+ */
+export function chartKey(names: string[], locale?: string): string {
+	const lang = langOf(locale);
+	return names
+		.map((name, i) => `${t(lang, SERIES_COLOURS[i % SERIES_COLOURS.length]!.name)}: ${name}`)
+		.join(" · ");
+}
 
 /** Digits grouped the way the reader's locale groups them. */
 export function formatCount(value: number, locale?: string): string {

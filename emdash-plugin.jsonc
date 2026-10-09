@@ -18,12 +18,21 @@
 	//
 	// Listing images live in `images/`, which the bundle leaves out. The
 	// banner is 1536x512 because the registry shows it at 3:1, and at that
-	// shape link previews show it whole. Screenshots would go under
-	// `release.artifacts.screenshots`. There are none yet.
+	// shape link previews show it whole. The icon is 512x512 with transparent
+	// corners, and the screenshots come from a filler-data site.
 	"release": {
 		"requires": { "env:emdash": ">=1.0.1" },
 		"artifacts": {
-			"banner": { "file": "./images/banner.webp" }
+			"icon": { "file": "./images/icon.webp" },
+			"banner": { "file": "./images/banner.webp" },
+			// Taken on a filler-data site ("Coastline Notes") with demo data, never a real one.
+			"screenshots": [
+				{ "file": "./images/screenshot-1-overview.webp" },
+				{ "file": "./images/screenshot-2-engagement.webp" },
+				{ "file": "./images/screenshot-3-per-entry.webp" },
+				{ "file": "./images/screenshot-4-editor-panel.webp" },
+				{ "file": "./images/screenshot-5-dashboard-card.webp" }
+			]
 		}
 	},
 
@@ -128,7 +137,7 @@
 				"type": "string",
 				"label": "Break down page views by",
 				"default": "category",
-				"description": "Event data your site attaches to its page views, up to three, comma-separated, for example category, section, tags. The Analytics page shows page views for each value. Leave empty for none."
+				"description": "Event data your site attaches to its page views, up to three, comma-separated, for example category, section, tags. The Umami Analytics page shows page views for each value. Leave empty for none."
 			},
 			"readThrough": {
 				"type": "boolean",
@@ -193,19 +202,20 @@
 		},
 
 		"pages": [
-			{ "path": "/analytics", "label": "Analytics", "icon": "chart-line" },
-			{ "path": "/analytics/content", "label": "Analytics per entry", "icon": "chart" }
+			{ "path": "/analytics", "label": "Umami Analytics", "icon": "chart-line" },
+			{ "path": "/analytics/content", "label": "Umami per entry", "icon": "chart" }
 		],
-		"widgets": [{ "id": "traffic", "title": "Traffic", "size": "half" }],
+		"widgets": [{ "id": "traffic", "title": "Umami traffic", "size": "half" }],
 
 		// Opens beside the entry editor, in every collection: the plugin
 		// cannot know at build time which collections a site routes, and
 		// an entry without a page says so in the panel.
 		//
-		// "Analytics" because manifest strings cannot be translated, and it
-		// reads the same in English and German; "Views" sat in English above
-		// a German panel.
-		"editorPanels": [{ "id": "views", "title": "Analytics", "route": "panel" }]
+		// "Umami" because manifest strings cannot be translated, and a name
+		// reads the same in English and German ("Views" sat in English above
+		// a German panel). It names the plugin, so the panel is not taken
+		// for another analytics plugin's.
+		"editorPanels": [{ "id": "views", "title": "Umami", "route": "panel" }]
 	},
 
 	// The registry page's tabs. Profile-level: they carry across releases.

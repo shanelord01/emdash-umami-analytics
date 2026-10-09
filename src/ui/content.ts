@@ -41,6 +41,12 @@ export const CONTENT_PATH = "/analytics/content";
 export const VIEW_ACTION = "analytics:content:view";
 export const TABLE_ACTION = "analytics:content:table";
 export const REBUILD_ACTION = "analytics:content:rebuild";
+/**
+ * "First page" opens the same view as the button of the current mode
+ * beside it, and the host keys an actions block's elements by `action_id`,
+ * so it gets an id of its own.
+ */
+export const FIRST_ACTION = "analytics:content:first";
 
 /**
  * Rows per table page. A sandboxed response is capped at 2 000 nodes and
@@ -116,7 +122,7 @@ export function parseContentInput(input: Record<string, unknown>): { view: Conte
 	const view = decodeView(cut < 0 ? "" : id.slice(cut + 1));
 
 	if (base === REBUILD_ACTION) return { view, rebuild: true };
-	if (base === VIEW_ACTION) return { view, rebuild: false };
+	if (base === VIEW_ACTION || base === FIRST_ACTION) return { view, rebuild: false };
 	if (base !== TABLE_ACTION) return { view: DEFAULT_VIEW, rebuild: false };
 
 	const value = typeof input.value === "object" && input.value !== null ? (input.value as Record<string, unknown>) : {};
@@ -235,7 +241,7 @@ export function renderContent(input: ContentInput): AnalyticsBlock[] {
 	const out: AnalyticsBlock[] = [collectionButtons(input, lang), controls(input, lang)];
 
 	const notes = [
-		t(lang, view.dir === "desc" ? "sortMostViewed" : "sortLeastViewed", { days: windowOf(view.sort) }),
+		sortNote(input, lang),
 		...(view.offset > 0 || input.nextCursor
 			? [t(lang, "showingRows", { from: view.offset + 1, to: view.offset + input.rows.length })]
 			: []),
@@ -295,7 +301,7 @@ function controls(input: ContentInput, lang: Lang) {
 					}),
 				)
 			: []),
-		...(view.offset > 0 ? [button(viewAction(start), t(lang, "firstPage"), { style: "secondary" })] : []),
+		...(view.offset > 0 ? [button(`${FIRST_ACTION}|${encodeView(start)}`, t(lang, "firstPage"), { style: "secondary" })] : []),
 		button(`${REBUILD_ACTION}|${encodeView(view)}`, t(lang, "rebuildIndex"), { style: "secondary" }),
 		link(t(lang, "overview"), { kind: "plugin-page", path: PAGE_PATH }, { appearance: "secondary" }),
 	];
@@ -322,12 +328,17 @@ function entryTable(input: ContentInput, lang: Lang) {
 			{ key: "entry", label: t(lang, "colEntry"), format: "text" },
 			...(showLanguage ? [{ key: "language", label: t(lang, "colLanguage"), format: "badge" as const }] : []),
 			...(showCollection ? [{ key: "collection", label: t(lang, "colCollection"), format: "badge" as const }] : []),
-			{ key: "path", label: t(lang, "colPath"), format: "code" },
+			// Text, not code: a code cell is monospace on a tinted pill and
+			// breaks only after a hyphen, so "/posts/saturday-" stays on one
+			// line. Measured in EmDash 1.2's admin it was the widest column
+			// when the table is squeezed (170 of 539 px), and it pushed the
+			// table past the page's right margin below about 860 px.
+			{ key: "path", label: t(lang, "colPath"), format: "text" },
 			...(combined
-				? [{ key: "byLanguage", label: t(lang, "colByLanguage", { days: windowOf(view.sort) }), format: "text" as const }]
+				? [{ key: "byLanguage", label: byLanguageLabel(input, lang), format: "text" as const }]
 				: []),
-			{ key: "views7", label: t(lang, "col7Days"), format: "number", sortable: true },
-			{ key: "views30", label: t(lang, "col30Days"), format: "number", sortable: true },
+			{ key: "views7", label: windowLabel(input, "views7", lang), format: "number", sortable: true },
+			{ key: "views30", label: windowLabel(input, "views30", lang), format: "number", sortable: true },
 			...(showLanguage ? [{ key: "allLanguages", label: t(lang, "colAllLanguages"), format: "number" as const }] : []),
 			...(reads?.depths.map((depth, i) => ({ key: `read${i}`, label: t(lang, "colReadTo", { depth }), format: "number" as const })) ??
 				[]),
@@ -429,10 +440,45 @@ async function readMembers(entries: Typed<EntryRow>, groups: string[]): Promise<
 }
 
 function historyNote(input: ContentInput, lang: Lang): string[] {
-	if (!input.historySince) return [];
-	const thirtyStart = addDays(localDay(input.now, stateZone(input.state)), -29);
-	if (daysBetween(thirtyStart, input.historySince) <= 0) return [];
-	return [t(lang, "historyThirty", { date: formatDay(input.historySince, lang) })];
+	const since = storedSince(input, 30);
+	return since ? [t(lang, "historyThirty", { date: formatDay(since, lang) })] : [];
+}
+
+/**
+ * The first stored day, when it is later than the first day of the
+ * `days` window, or null when the store reaches back that far.
+ *
+ * The figures here are sums of the stored days, so a window the store
+ * does not reach is counted from where it starts. The overview's Top
+ * entries ask the provider for the whole range, so the same "30 days"
+ * there can be larger, and each page labels its own figure.
+ */
+export function storedSince(input: Pick<ContentInput, "historySince" | "now" | "state">, days: number): Day | null {
+	if (!input.historySince) return null;
+	const start = addDays(localDay(input.now, stateZone(input.state)), -(days - 1));
+	return daysBetween(start, input.historySince) > 0 ? input.historySince : null;
+}
+
+/** "30 days", or "Since Oct 2, 2026" while the stored history is shorter than that. */
+function windowLabel(input: ContentInput, sort: SortKey, lang: Lang): string {
+	const since = storedSince(input, windowOf(sort));
+	if (since) return t(lang, "colSince", { date: formatDay(since, lang) });
+	return t(lang, sort === "views7" ? "col7Days" : "col30Days");
+}
+
+function byLanguageLabel(input: ContentInput, lang: Lang): string {
+	const days = windowOf(input.view.sort);
+	const since = storedSince(input, days);
+	if (since) return t(lang, "colByLanguageSince", { date: formatDay(since, lang) });
+	return t(lang, "colByLanguage", { days });
+}
+
+function sortNote(input: ContentInput, lang: Lang): string {
+	const desc = input.view.dir === "desc";
+	const days = windowOf(input.view.sort);
+	// The history note right after it names the day the figures start.
+	if (storedSince(input, days)) return t(lang, desc ? "sortMostViewedPlain" : "sortLeastViewedPlain");
+	return t(lang, desc ? "sortMostViewed" : "sortLeastViewed", { days });
 }
 
 /** Where a running index walk stands, or undefined when none runs. */

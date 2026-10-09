@@ -5,9 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EntryRow } from "../src/store/rows.js";
 import { CONTENT_PATH } from "../src/ui/content.js";
 import { PAGE_PATH } from "../src/ui/page.js";
+import { formatDay } from "../src/ui/format.js";
 import { PANEL_ID, renderPanel } from "../src/ui/panel.js";
+import { addDays } from "../src/sync/window.js";
 import { bridgeCalls } from "./bridge-calls.js";
-import { newHost, NOW, routableCollection, setState, synced } from "./host.js";
+import { daysBack, newHost, NOW, routableCollection, seedDaily, setState, synced, TODAY } from "./host.js";
 
 let host: PluginRuntimeTestHost | undefined;
 
@@ -62,6 +64,42 @@ describe("renderPanel", () => {
 		const result = validateBlockResponse({ blocks }, { pluginPagePaths: [PAGE_PATH, CONTENT_PATH] });
 		expect(result.errors).toEqual([]);
 	});
+
+	it("names the day the stored history starts while it is shorter than the window", () => {
+		// The per-entry page heads the same figure "Since Oct 2, 2026"; the
+		// panel has to agree with it rather than claim 30 days.
+		const since = addDays(TODAY, -4);
+		const current = row("/a/", { translationGroup: "a", views7: 3, views30: 5 });
+		const other = row("/de/a/", { locale: "de", translationGroup: "a", views7: 1, views30: 2 });
+		const blocks = renderPanel({ current, members: [current, other], historySince: since, state: synced, now: NOW, locale: "en" });
+
+		const date = formatDay(since, "en");
+		expect(stat(blocks)).toEqual([
+			[`Page views since ${date}`, "3"],
+			[`Page views since ${date}`, "5"],
+		]);
+		const columns = (find(blocks, "table")[0]!.columns as Array<{ label: string }>).map((c) => c.label);
+		expect(columns.slice(2)).toEqual([`Since ${date}`, `Since ${date}`]);
+		expect(find(blocks, "context")[0]!.text).toContain(`All languages: 7 since ${date}`);
+	});
+
+	it("keeps the window when the stored history reaches back far enough for it", () => {
+		// Six days back is the first day of the 7-day window: that window is
+		// whole, the 30-day one is not.
+		const current = row("/a/", { views7: 3, views30: 5 });
+		const blocks = renderPanel({
+			current,
+			members: [current],
+			historySince: addDays(TODAY, -6),
+			state: synced,
+			now: NOW,
+			locale: "de",
+		});
+		expect(stat(blocks)).toEqual([
+			["Seitenaufrufe, letzte 7 Tage", "3"],
+			[`Seitenaufrufe seit ${formatDay(addDays(TODAY, -6), "de")}`, "5"],
+		]);
+	});
 });
 
 describe("the Views panel", () => {
@@ -78,6 +116,21 @@ describe("the Views panel", () => {
 			["Page views, last 30 days", "19"],
 		]);
 		expect(find(response.blocks, "context")[0]!.text).toContain("/blog/post-0/");
+	});
+
+	it("reads where the stored history starts", async () => {
+		host = await newHost();
+		const [id] = await routableCollection(host, 1);
+		await put(host, row("/blog/post-0/", { entryId: id!, views7: 4, views30: 19 }));
+		await seedDaily(host, ["/blog/post-0/"], daysBack(10));
+		await setState(host, synced);
+
+		const short = await host.admin.loadEditorPanel(PANEL_ID, "posts", id!);
+		expect(stat(short.blocks)?.[1]).toEqual([`Page views since ${formatDay(addDays(TODAY, -9), "en")}`, "19"]);
+
+		await seedDaily(host, ["/blog/post-0/"], [addDays(TODAY, -29)]);
+		const whole = await host.admin.loadEditorPanel(PANEL_ID, "posts", id!);
+		expect(stat(whole.blocks)?.[1]).toEqual(["Page views, last 30 days", "19"]);
 	});
 
 	it("adds the translations and their total", async () => {
@@ -141,6 +194,7 @@ describe("the Views panel", () => {
 		const calls = await bridgeCalls(() => host!.admin.loadEditorPanel(PANEL_ID, "posts", id!));
 
 		expect(calls.length, calls.join(", ")).toBeLessThanOrEqual(10);
-		expect(calls.filter((c) => c === "storageQuery")).toHaveLength(2);
+		// The entry, its translations and the oldest stored day.
+		expect(calls.filter((c) => c === "storageQuery")).toHaveLength(3);
 	});
 });

@@ -9,6 +9,7 @@ import {
 	PAGE_PATH,
 	PAGE_REFRESH_ACTION,
 	parseRange,
+	parseRangeAction,
 	RANGE_ACTION,
 	mergeDays,
 	renderPage,
@@ -164,8 +165,9 @@ describe("renderPage", () => {
 		// buttons beside it.
 		const blocks = renderPage(input({ range: 90 }));
 		expect(find(blocks, "select")).toHaveLength(0);
-		const ranges = find(blocks, "button").filter((b) => b.action_id === RANGE_ACTION);
+		const ranges = find(blocks, "button").filter((b) => String(b.action_id).startsWith(`${RANGE_ACTION}:`));
 		expect(ranges.map((b) => b.value)).toEqual([7, 30, 90]);
+		expect(ranges.map((b) => parseRangeAction(b.action_id, undefined))).toEqual([7, 30, 90]);
 		expect(ranges.find((b) => b.value === 90)?.style).toBe("primary");
 		expect(ranges.filter((b) => b.style === "primary")).toHaveLength(1);
 		const refresh = find(blocks, "button").find((b) => b.action_id === PAGE_REFRESH_ACTION);
@@ -264,6 +266,51 @@ describe("views by event data", () => {
 		};
 		expect(table.rows).toHaveLength(10);
 		expect(JSON.stringify(blocks)).toContain("Aufrufe nach category");
+	});
+});
+
+describe("the chart key", () => {
+	// EmDash's chart block registers no ECharts legend, so the page names
+	// each series and its colour in a line under the chart.
+	it("names each series by the colour it is drawn in", () => {
+		const blocks = renderPage(input());
+		const chart = find(blocks, "chart")[0] as unknown as { config: { series: Array<{ name: string; color?: string }> } };
+		expect(chart.config.series.map((s) => [s.name, s.color])).toEqual([
+			["Page views", "#4290F0"],
+			["Visits", "#F5B647"],
+		]);
+		const at = blocks.indexOf(blocks.find((b) => b.type === "chart")!);
+		expect(blocks[at + 1]).toMatchObject({ type: "context", text: "Blue: Page views · Yellow: Visits" });
+		const de = renderPage(input({ locale: "de" }));
+		expect(de[de.indexOf(de.find((b) => b.type === "chart")!) + 1]).toMatchObject({
+			text: "Blau: Seitenaufrufe · Gelb: Besuche",
+		});
+	});
+});
+
+describe("action ids", () => {
+	// The host keys an actions block's elements by action_id, and repeated
+	// ids drew React's "two children with the same key" warning.
+	it("are unique within every actions block of the page", () => {
+		const blocks = [...renderPage(input({ range: 30 })), ...renderPage(input({ rollups: [] }))];
+		const groups = [
+			...find(blocks, "actions").map((a) => a.elements as Array<{ action_id?: string }>),
+			...find(blocks, "empty").map((e) => (e.actions ?? []) as Array<{ action_id?: string }>),
+		];
+		expect(groups.length).toBeGreaterThan(1);
+		for (const elements of groups) {
+			const ids = elements.map((e) => e.action_id).filter((id): id is string => id !== undefined);
+			expect(new Set(ids).size).toBe(ids.length);
+		}
+	});
+
+	it("carry the range in the id, and still read the range from the value of 0.1.2's id", () => {
+		expect(parseRangeAction("analytics:range:7", undefined)).toBe(7);
+		expect(parseRangeAction("analytics:range:90", 30)).toBe(90);
+		expect(parseRangeAction(RANGE_ACTION, "90")).toBe(90);
+		expect(parseRangeAction("analytics:range:45", undefined)).toBe(30);
+		expect(parseRangeAction(PAGE_REFRESH_ACTION, 7)).toBeNull();
+		expect(parseRangeAction(undefined, 7)).toBeNull();
 	});
 });
 

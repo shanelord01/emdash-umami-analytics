@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { EntryRow, RollupRow } from "../src/store/rows.js";
 import type { SyncState } from "../src/sync/scheduler.js";
 import { renderWidget, type WidgetInput } from "../src/ui/widget.js";
+import { addDays, DEFAULT_TIME_ZONE, localDay } from "../src/sync/window.js";
 
 const NOW = new Date("2026-09-20T12:00:00.000Z");
 
@@ -212,16 +213,42 @@ describe("locale handling", () => {
 	});
 });
 
+describe("the top paths table", () => {
+	const topPaths = [{ path: "/a/", pageviews: 5394, visits: 3000 }];
+	const table = (snapshotSince?: string) =>
+		renderWidget(input({ state: { phase: "overview", lastSync: NOW.toISOString(), topPaths, ...(snapshotSince && { snapshotSince }) } })).some(
+			(b) => b.type === "table",
+		);
+	const today = localDay(NOW, DEFAULT_TIME_ZONE);
+
+	it("shows a snapshot of the cards' week, or of yesterday's until the next overview", () => {
+		expect(table(addDays(today, -6))).toBe(true);
+		expect(table(addDays(today, -7))).toBe(true);
+		expect(table()).toBe(true);
+	});
+
+	it("leaves out a snapshot of another window, such as a ninety-day backfill", () => {
+		expect(table(addDays(today, -89))).toBe(false);
+		expect(table(addDays(today, -1))).toBe(false);
+	});
+});
+
 describe("a finished index that matched nothing", () => {
 	it("says so and points to the setup check", () => {
-		const blocks = renderWidget(input({ state: { phase: "overview", lastSync: NOW.toISOString(), indexComplete: true, indexed: 0 } }));
-		expect(JSON.stringify(blocks)).toMatch(/no page is matched to an entry yet; Check setup on the Analytics page says why/);
+		const blocks = renderWidget(
+			input({ state: { phase: "overview", lastSync: NOW.toISOString(), indexComplete: true, indexed: 0, matched: 0 } }),
+		);
+		expect(JSON.stringify(blocks)).toMatch(/no page is matched to an entry yet; Check setup on the Umami Analytics page says why/);
 	});
 
 	it("stays quiet while the index is still being built or has matches", () => {
 		for (const state of [
 			{ phase: "overview" as const, lastSync: NOW.toISOString(), indexComplete: false, indexed: 0 },
 			{ phase: "overview" as const, lastSync: NOW.toISOString(), indexComplete: true, indexed: 3 },
+			// Every entry stored by the content hooks before the walk reached it.
+			{ phase: "overview" as const, lastSync: NOW.toISOString(), indexComplete: true, indexed: 0, matched: 9 },
+			// Not counted yet (a state from before 0.1.3): no claim either way.
+			{ phase: "overview" as const, lastSync: NOW.toISOString(), indexComplete: true, indexed: 0 },
 		]) {
 			expect(JSON.stringify(renderWidget(input({ state })))).not.toMatch(/no page is matched/);
 		}

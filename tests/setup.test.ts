@@ -134,7 +134,7 @@ describe("each failure, with the sentence that names its fix", () => {
 	});
 
 	it("no stored site URL, which leaves the index nothing to match", () => {
-		const facts = { ...healthy(), siteUrl: "", state: { ...healthy().state, indexed: 0 } };
+		const facts = { ...healthy(), siteUrl: "", state: { ...healthy().state, indexed: 0, matched: 0 } };
 		expect(check(facts, "siteUrl")).toMatchObject({
 			status: "problem",
 			detail: expect.stringMatching(/emdash:site_url/),
@@ -143,11 +143,22 @@ describe("each failure, with the sentence that names its fix", () => {
 	});
 
 	it("a finished index that matched nothing although the URL is set", () => {
-		const facts = { ...healthy(), state: { ...healthy().state, indexed: 0 } };
+		const facts = { ...healthy(), state: { ...healthy().state, indexed: 0, matched: 0 } };
 		expect(check(facts, "index")).toMatchObject({
 			status: "problem",
 			detail: expect.stringMatching(/URL Pattern \(under Content Types\), then press Rebuild index/),
 		});
+	});
+
+	it("counts entries the content hooks matched before the index walk reached them", () => {
+		// The walk added none itself (indexed 0): every entry was published after install.
+		const facts = { ...healthy(), state: { ...healthy().state, indexed: 0, matched: 9 } };
+		expect(check(facts, "index")).toMatchObject({ status: "ok", detail: "9 entries matched to their pages." });
+	});
+
+	it("waits for a count on a state from before the matched count was stored", () => {
+		const facts = { ...healthy(), state: { ...healthy().state, indexed: 0 } };
+		expect(check(facts, "index").status).toBe("waiting");
 	});
 
 	it("a host without a scheduler", () => {

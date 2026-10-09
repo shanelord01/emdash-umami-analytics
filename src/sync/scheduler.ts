@@ -39,7 +39,7 @@ import { createDemoProvider } from "../providers/demo.js";
 import { createUmamiProvider } from "../providers/umami.js";
 import type { DateRange, Overview, Provider, ProviderId } from "../providers/types.js";
 import { chunk, dailyStore, entriesStore, rollupStore, BIND_LIMIT, ID_BATCH } from "../store/access.js";
-import { dailyId, decideWrite, engagementOf, type DailyRow, type EntryRow, type RollupRow } from "../store/rows.js";
+import { dailyId, decideWrite, engagementOf, isPublished, type DailyRow, type EntryRow, type RollupRow } from "../store/rows.js";
 import { recentViewsOf, withRecent } from "../store/views.js";
 import { missingSettingsMessage, readSettings, type AnalyticsSettings } from "../settings.js";
 import { historyBackfilling, historyDue, runHistoryStep, type HistoryPass } from "./history.js";
@@ -119,7 +119,19 @@ export interface SyncState {
 	 * It stays true while a later walk repairs the index.
 	 */
 	indexComplete?: boolean;
+	/** Rows the index walks added themselves. Entries the content hooks stored first are not counted here. */
 	indexed?: number;
+	/**
+	 * Published entries stored in the index, as the last complete walk or
+	 * paths pass counted them. Unlike `indexed`, it counts rows whatever
+	 * stored them, which is what "nothing matched" has to be decided on.
+	 * Undefined on a state from before 0.1.3 until the next count.
+	 */
+	matched?: number;
+	/** Published entries the running index walk has found stored so far. */
+	walkMatched?: number;
+	/** Published entries the running paths pass has read so far. */
+	passMatched?: number;
 	/** The `INDEX_VERSION` of the last walk that completed. An older one gets repaired. */
 	indexVersion?: number;
 	/**
@@ -560,10 +572,8 @@ async function runOverviewPhase(
 	// totals whatever the range, so it has nothing to gain from a wider
 	// first window: its history arrives through the history pass.
 	const exactDays = provider.capabilities.exactWindowDays;
-	const range =
-		state.backfilled || isWidePull(provider)
-			? syncWindow(now, OVERVIEW_DAYS_BACK, exactDays, zone)
-			: backfillWindow(now, exactDays, zone);
+	const backfill = !state.backfilled && !isWidePull(provider);
+	const range = backfill ? backfillWindow(now, exactDays, zone) : syncWindow(now, OVERVIEW_DAYS_BACK, exactDays, zone);
 	const res = await provider.overview(range);
 	if (!res.ok) return await fail(ctx, state, "overview", res.error, now, res.problem);
 
@@ -577,11 +587,17 @@ async function runOverviewPhase(
 		backfilled: true,
 		lastSync: now.toISOString(),
 		...clearedErrors(state, "overview"),
-		topPaths: res.value.topPaths.slice(0, 5).map((p) => ({
-			path: p.path,
-			pageviews: p.pageviews,
-			visits: p.visits,
-		})),
+		// The widget shows the top paths under its weekly cards, so a
+		// backfill's paths, which cover its whole window (demo: ninety days),
+		// are not kept: the next overview reads the week. Referrers and
+		// countries are shown with the day they start (`snapshotSince`).
+		topPaths: backfill
+			? undefined
+			: res.value.topPaths.slice(0, 5).map((p) => ({
+					path: p.path,
+					pageviews: p.pageviews,
+					visits: p.visits,
+				})),
 		referrers: res.value.referrers.slice(0, SNAPSHOT_ROWS).map((r) => ({ label: r.label, visits: r.visits })),
 		countries: res.value.countries.slice(0, SNAPSHOT_ROWS).map((c) => ({ label: c.label, visits: c.visits })),
 		snapshotSince: range.since,
@@ -612,6 +628,8 @@ async function runIndexPhase(ctx: PluginContext, state: SyncState, now: Date, re
 	}
 
 	const finished = result.complete;
+	// A walk that starts from the beginning counts from zero.
+	const walkMatched = (state.index ? (state.walkMatched ?? 0) : 0) + result.matched;
 	await writeState(ctx, {
 		...state,
 		phase: "overview",
@@ -621,6 +639,8 @@ async function runIndexPhase(ctx: PluginContext, state: SyncState, now: Date, re
 		index: result.next,
 		indexComplete: Boolean(state.indexComplete) || finished,
 		indexed: (state.indexed ?? 0) + result.indexed,
+		walkMatched: finished ? undefined : walkMatched,
+		...(finished && { matched: walkMatched }),
 		...(Object.keys(result.labels).length > 0 && { collectionLabels: result.labels }),
 		...(finished && { indexVersion: INDEX_VERSION, rebuild: undefined }),
 	});
@@ -786,6 +806,13 @@ async function runPathsPhase(
 	const live = page.items.map((item) => item.data).filter((row) => row.status !== "deleted");
 	const paths = [...new Set(live.map((row) => row.path))];
 
+	// The pass reads every stored entry anyway, so it counts the matched
+	// ones on the way at no extra call. A pass that ends publishes its
+	// count, and one that starts from the beginning counts from zero.
+	const passMatched = (state.cursor ? (state.passMatched ?? 0) : 0) + live.filter(isPublished).length;
+	const counted = (cursor: string | undefined): Partial<SyncState> =>
+		cursor ? { passMatched } : { matched: passMatched, passMatched: undefined };
+
 	if (paths.length === 0) {
 		// Either no entries are indexed yet or the pass is complete; either
 		// way the next tick starts a fresh pass from the beginning.
@@ -795,6 +822,7 @@ async function runPathsPhase(
 			lastWork: "paths",
 			cursor: undefined,
 			lastSync: now.toISOString(),
+			...counted(undefined),
 		});
 		return { phase: "paths", ok: true, written: 0, skipped: 0, paths: 0 };
 	}
@@ -875,6 +903,7 @@ async function runPathsPhase(
 		cursor: page.cursor,
 		lastSync: now.toISOString(),
 		...clearedErrors(state, "paths"),
+		...counted(page.cursor),
 	});
 
 	return { phase: "paths", ok: true, written: toWrite.length, skipped, paths: paths.length };
@@ -1077,6 +1106,8 @@ async function runWipe(
 		index: state.index,
 		indexComplete: state.indexComplete,
 		indexed: state.indexed,
+		matched: state.matched,
+		walkMatched: state.walkMatched,
 		indexVersion: state.indexVersion,
 		rebuild: state.rebuild,
 		collectionLabels: state.collectionLabels,

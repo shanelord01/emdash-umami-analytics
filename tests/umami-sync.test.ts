@@ -564,7 +564,7 @@ describe("the analytics page", () => {
 		expect(text).toContain("Open in Umami");
 		// Umami is exact over the whole range, so nothing is qualified as
 		// covering only part of it, and nothing as estimated.
-		expect(text).toContain("Per-entry numbers for the last 30 days.");
+		expect(text).toContain("Views for the last 30 days, as the provider counts them.");
 		expect(text).not.toMatch(/as far back as the provider counts/);
 		expect(text).not.toMatch(/estimated/);
 		const entries = response.blocks.find((b) => b.block_id === "analytics:entries") as { rows: Array<Record<string, unknown>> };

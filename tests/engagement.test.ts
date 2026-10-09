@@ -80,7 +80,7 @@ describe("the engagement figures", () => {
 		const items = (blocks[0] as unknown as { items: Array<{ label: string; value: string; description: string; trend?: string }> }).items;
 		expect(items.map((i) => [i.label, i.value, i.description])).toEqual([
 			["Bounce rate, last 30 days", "77%", "-10.5 percentage points vs previous period"],
-			["Average visit, last 30 days", "1 min 22 s", "+228% vs previous period"],
+			["Average visit, last 30 days", "1\u00a0min\u00a022\u00a0s", "+228% vs previous period"],
 			["Page views per visit, last 30 days", "2.07", "+71% vs previous period"],
 		]);
 		// A rising bounce rate is bad news; an arrow up would say otherwise.
@@ -110,7 +110,7 @@ describe("the engagement figures", () => {
 		const items = (engagementStats(owner(), 30, TODAY, "de")!.blocks[0] as unknown as { items: Array<{ value: string; description: string }> }).items;
 		expect(items[0]!.value).toMatch(/^77\s%$/u);
 		expect(items[0]!.description).toBe("-10,5 Prozentpunkte ggü. vorigem Zeitraum");
-		expect(items[1]!.value).toBe("1 Min. 22 s");
+		expect(items[1]!.value).toBe("1\u00a0Min.\u00a022\u00a0s");
 		expect(items[2]!.value).toBe("2,07");
 	});
 });
@@ -192,7 +192,9 @@ describe("the reads chart", () => {
 
 describe("durations", () => {
 	it("read as seconds under a minute and as minutes and seconds above", () => {
-		expect(formatDuration(25, "en")).toBe("25 s");
-		expect(formatDuration(82.4, "en")).toBe("1 min 22 s");
+		expect(formatDuration(25, "en")).toBe("25\u00a0s");
+		expect(formatDuration(82.4, "en")).toBe("1\u00a0min\u00a022\u00a0s");
+		// Non-breaking spaces: the dashboard card wrapped "1 min 8" and "s" onto two lines.
+		expect(formatDuration(68, "en")).not.toMatch(/ /);
 	});
 });

@@ -28,7 +28,8 @@ import { buildProvider, readState, REFRESH_TASK, SYNC_TASK, WAITING_KEY, type Sy
 import { addDays, localDay } from "../sync/window.js";
 import { actions, banner, button, code, context, header, table, type AnalyticsBlock } from "./blocks.js";
 import { formatAge, formatCount } from "./format.js";
-import { RANGE_ACTION, SETUP_ACTION } from "./page.js";
+import { rangeAction, SETUP_ACTION } from "./page.js";
+import { matchedCount } from "./status.js";
 
 /**
  * Discovery reads the last week: the hostnames a website reported lately
@@ -237,7 +238,8 @@ function siteUrlCheck(facts: SetupFacts, lang: Lang): Check {
 function indexCheck(facts: SetupFacts, lang: Lang): Check {
 	const { state } = facts;
 	if (!state.indexComplete) return { id: "index", status: "waiting", detail: t(lang, "noEntriesIndexing") };
-	const count = state.indexed ?? 0;
+	const count = matchedCount(state);
+	if (count === undefined) return { id: "index", status: "waiting", detail: t(lang, "indexCounting") };
 	if (count > 0) return { id: "index", status: "ok", detail: t(lang, "indexMatched", { count: count }) };
 	if (!facts.siteUrl) return skipped("index", lang, "needsSiteUrl");
 	return { id: "index", status: "problem", detail: t(lang, "noEntriesNoUrls") };
@@ -372,7 +374,7 @@ export function renderSetup(facts: SetupFacts, backValue: number, locale: string
 	const out: AnalyticsBlock[] = [
 		actions(
 			[
-				button(RANGE_ACTION, t(lang, "backToAnalytics"), { style: "secondary", value: backValue }),
+				button(rangeAction(backValue), t(lang, "backToAnalytics"), { style: "secondary", value: backValue }),
 				button(SETUP_ACTION, t(lang, "checkAgain"), { style: "secondary", value: backValue }),
 			],
 			{ blockId: "analytics:setup:controls" },

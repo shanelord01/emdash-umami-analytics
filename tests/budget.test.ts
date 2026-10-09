@@ -228,6 +228,55 @@ describe("admin requests", () => {
 		expect((await host.inspect.scheduledTasks()).map((t) => String(t.name))).toContain("refresh");
 	});
 
+	it("an editor panel load, with translations and read-through", async () => {
+		// The panel's worst case: the state, the entry, its translation group
+		// and the oldest stored day, which heads the 30-day figure while the
+		// stored history is shorter.
+		host = await newHost();
+		const [id] = await routableCollection(host, 1);
+		for (const [path, entryId, locale] of [
+			["/blog/post-0/", id!, "en"],
+			["/de/blog/post-0/", "de-0", "de"],
+		] as const) {
+			await host.fixtures.plugin.storage("entries", path, {
+				path,
+				collection: "posts",
+				entryId,
+				translationGroup: id!,
+				locale,
+				title: path,
+				status: "published",
+				views7: 4,
+				views30: 9,
+				updatedAt: NOW.toISOString(),
+			});
+		}
+		await seedDaily(host, ["/blog/post-0/"], daysBack(5));
+		await setState(host, {
+			...synced,
+			reads: {
+				at: NOW.toISOString(),
+				event: "post_read",
+				entryProperty: "post",
+				depthProperty: "depth",
+				depths: ["half", "end"],
+				since: addDays(TODAY, -29),
+				byEntry: { "/blog/post-0/": [3, 1] },
+				daily: [],
+				partial: false,
+			},
+		});
+
+		let blocks: unknown;
+		const calls = await bridgeCalls(async () => {
+			blocks = (await host!.admin.loadEditorPanel("views", "posts", id!)).blocks;
+		});
+
+		expect(calls.length, calls.join(", ")).toBeLessThanOrEqual(LIMIT);
+		expect(calls).toEqual(["kvGet", "storageQuery", "storageQuery", "storageQuery"]);
+		expect(JSON.stringify(blocks)).toMatch(/Page views since/);
+	});
+
 	it("an analytics page load over 90 days, answered live", async () => {
 		host = await newHost();
 		await withData(host);

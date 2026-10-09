@@ -147,6 +147,30 @@ export function columns(cols: AnalyticsBlock[][], opts?: { blockId?: string }): 
 	};
 }
 
+/**
+ * Series colours, in the order of the host's own categorical palette
+ * (kumo's light theme), each with the catalogue key of its name.
+ *
+ * EmDash draws no legend: its chart block registers no ECharts legend
+ * component, and a timeseries chart takes no options beyond its series. So
+ * a chart with more than one series says in a line of text below it which
+ * colour is which (`chartKey`), and each series is given its colour
+ * explicitly, so that line stays true if the host's palette changes.
+ */
+export const SERIES_COLOURS = [
+	{ hex: "#4290F0", name: "colourBlue" },
+	{ hex: "#F5B647", name: "colourYellow" },
+	{ hex: "#E8649D", name: "colourPink" },
+	{ hex: "#8D58EE", name: "colourPurple" },
+	{ hex: "#50C3B6", name: "colourTeal" },
+	{ hex: "#D37536", name: "colourOrange" },
+] as const;
+
+/** The series with `SERIES_COLOURS` assigned in order. */
+export function coloured(series: ChartSeries[]): ChartSeries[] {
+	return series.map((s, i) => ({ ...s, color: SERIES_COLOURS[i % SERIES_COLOURS.length]!.hex }));
+}
+
 export function timeseries(
 	series: ChartSeries[],
 	opts?: { blockId?: string; height?: number; style?: "line" | "bar"; gradient?: boolean; yAxisName?: string },

@@ -16,4 +16,4 @@ The plugin asks for `network:request:unrestricted`, because a self-hosted Umami 
 
 **Who can do what**
 
-The dashboard card, both Analytics pages and the MCP tools need the editor role. The editor panel needs the author role and shows only entries the user may edit. Changing the settings needs the administrator role.
+The dashboard card, the Umami Analytics and Umami per entry pages and the MCP tools need the editor role. The editor panel needs the author role and shows only entries the user may edit. Changing the settings needs the administrator role.

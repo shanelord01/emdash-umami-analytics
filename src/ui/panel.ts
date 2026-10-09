@@ -8,19 +8,22 @@
  * numbers without the `plugins:read` the analytics pages need.
  *
  * Storage only, like the per-entry page: two indexed queries, by entry id
- * and by translation group.
+ * and by translation group, and the oldest stored day. The 30-day figure
+ * is a sum of stored days, so while the store does not reach back 30 days
+ * the panel names the day it starts, as the per-entry page does.
  */
 
 import type { PluginContext } from "emdash/plugin";
 
 import { langOf, t, type Lang } from "../i18n.js";
-import { entriesStore, BIND_LIMIT } from "../store/access.js";
+import { dailyStore, entriesStore, oldestDay, BIND_LIMIT } from "../store/access.js";
 import { isPublished, type EntryRow } from "../store/rows.js";
 import { readsFor, type ReadSnapshot } from "../sync/reads.js";
 import type { SyncState } from "../sync/scheduler.js";
+import type { Day } from "../sync/window.js";
 import { actions, context, empty, link, meter, stats, table, type AnalyticsBlock } from "./blocks.js";
-import { CONTENT_PATH } from "./content.js";
-import { formatCount } from "./format.js";
+import { CONTENT_PATH, storedSince } from "./content.js";
+import { formatCount, formatDay } from "./format.js";
 import { statusLine } from "./status.js";
 
 export const PANEL_ID = "views";
@@ -30,6 +33,8 @@ export interface PanelInput {
 	current: EntryRow | null;
 	/** Published translations in the entry's group, the entry included. */
 	members: EntryRow[];
+	/** The oldest stored day, when the store has any. */
+	historySince?: Day;
 	state: SyncState;
 	now: Date;
 	locale?: string;
@@ -50,9 +55,17 @@ export async function loadPanel(
 	const current = mine.find(isPublished) ?? latest(mine);
 	if (!current) return { ...base, current: null, members: [] };
 
-	const group = await entries.query({ where: { translationGroup: current.translationGroup }, limit: BIND_LIMIT });
+	const [group, historySince] = await Promise.all([
+		entries.query({ where: { translationGroup: current.translationGroup }, limit: BIND_LIMIT }),
+		oldestDay(dailyStore(ctx)),
+	]);
 	const members = group.items.map((item) => item.data).filter(isPublished);
-	return { ...base, current, members: members.length > 0 ? members : [current] };
+	return {
+		...base,
+		current,
+		members: members.length > 0 ? members : [current],
+		...(historySince && { historySince }),
+	};
 }
 
 export function renderPanel(input: PanelInput): AnalyticsBlock[] {
@@ -69,10 +82,14 @@ export function renderPanel(input: PanelInput): AnalyticsBlock[] {
 	// Two cards, not three: the editor sidebar is narrow, a third card is
 	// clipped, and the host's drag handle sits on the last one. The
 	// translations' total goes in the context line instead.
+	const since7 = storedSince(input, 7);
+	const since30 = storedSince(input, 30);
+	const cardLabel = (days: number, since: Day | null) =>
+		since ? t(lang, "pageviewsSince", { date: formatDay(since, lang) }) : t(lang, "pageviewsLastDays", { days });
 	out.push(
 		stats([
-			{ label: t(lang, "pageviewsLastDays", { days: 7 }), value: formatCount(current.views7, lang) },
-			{ label: t(lang, "pageviewsLastDays", { days: 30 }), value: formatCount(current.views30, lang) },
+			{ label: cardLabel(7, since7), value: formatCount(current.views7, lang) },
+			{ label: cardLabel(30, since30), value: formatCount(current.views30, lang) },
 		]),
 	);
 
@@ -86,8 +103,8 @@ export function renderPanel(input: PanelInput): AnalyticsBlock[] {
 				columns: [
 					{ key: "language", label: t(lang, "colLanguage"), format: "badge" },
 					{ key: "path", label: t(lang, "colPath"), format: "code" },
-					{ key: "views7", label: t(lang, "col7Days"), format: "number" },
-					{ key: "views30", label: t(lang, "col30Days"), format: "number" },
+					{ key: "views7", label: columnLabel(lang, "col7Days", since7), format: "number" },
+					{ key: "views30", label: columnLabel(lang, "col30Days", since30), format: "number" },
 				],
 				rows: [...members]
 					.sort((a, b) => b.views30 - a.views30 || a.locale.localeCompare(b.locale))
@@ -97,7 +114,13 @@ export function renderPanel(input: PanelInput): AnalyticsBlock[] {
 	}
 
 	const notes = [
-		...(translated ? [t(lang, "panelAllLanguages", { count: formatCount(sum(members), lang) })] : []),
+		...(translated
+			? [
+					since30
+						? t(lang, "panelAllLanguagesSince", { count: formatCount(sum(members), lang), date: formatDay(since30, lang) })
+						: t(lang, "panelAllLanguages", { count: formatCount(sum(members), lang) }),
+				]
+			: []),
 		current.status === "published" ? t(lang, "panelCountedAt", { path: current.path }) : t(lang, "panelNotPublished"),
 		statusLine(state, now, lang, {}),
 	].filter(Boolean);
@@ -127,6 +150,11 @@ function readMeters(reads: ReadSnapshot | undefined, entry: EntryRow, lang: Lang
 			}),
 		}),
 	);
+}
+
+/** A window column's heading, or "Since Oct 2, 2026" while the stored history is shorter. */
+function columnLabel(lang: Lang, key: "col7Days" | "col30Days", since: Day | null): string {
+	return since ? t(lang, "colSince", { date: formatDay(since, lang) }) : t(lang, key);
 }
 
 function sum(rows: EntryRow[]): number {
