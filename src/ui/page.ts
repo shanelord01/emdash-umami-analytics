@@ -525,7 +525,7 @@ function countryName(locale: string | undefined): (code: string) => string {
 }
 
 function coverageText(top: TopEntries, range: RangeDays, lang: Lang, live: boolean): string {
-	// The live answer counts every day of the range. Analytics per entry
+	// The live answer counts every day of the range. Umami per entry
 	// sums the stored days instead, so it says where they start, and this
 	// line says which of the two figures this is.
 	if (!top.coveredSince) return t(lang, live ? "coverageProvider" : "coverageRange", { days: range });

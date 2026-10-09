@@ -6,7 +6,7 @@ You need EmDash 1.0.1 or later with a plugin sandbox runner, a website in Umami 
 4. In EmDash, open Plugins, then this plugin's settings. Paste the key into Umami API key.
 5. For a self-hosted Umami, set Umami API URL to `https://your-host/api`. The default is Umami Cloud's address.
 6. Enter the Umami website ID from the website's settings in Umami. Leave it empty and the dashboard card lists the websites the key can see, so you can copy one. Save.
-7. Open Plugins > Analytics and select Check setup. It runs through everything the numbers depend on and gives one sentence for each problem.
+7. Open Plugins > Umami Analytics and select Check setup. It runs through everything the numbers depend on and gives one sentence for each problem.
 
 The first syncs read back as far as Keep daily rows for (90 days by default), newest first. On Node that takes about two hours for a site of 100 entries.
 

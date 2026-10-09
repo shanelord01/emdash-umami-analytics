@@ -238,7 +238,7 @@ describe("a finished index that matched nothing", () => {
 		const blocks = renderWidget(
 			input({ state: { phase: "overview", lastSync: NOW.toISOString(), indexComplete: true, indexed: 0, matched: 0 } }),
 		);
-		expect(JSON.stringify(blocks)).toMatch(/no page is matched to an entry yet; Check setup on the Analytics page says why/);
+		expect(JSON.stringify(blocks)).toMatch(/no page is matched to an entry yet; Check setup on the Umami Analytics page says why/);
 	});
 
 	it("stays quiet while the index is still being built or has matches", () => {

@@ -17,6 +17,7 @@ const en = {
 	noAnalyticsYet: "No analytics yet",
 	visitsLastDays: "Visits, last {days} days",
 	pageviewsLastDays: "Page views, last {days} days",
+	pageviewsSince: "Page views since {date}",
 	pageviews: "Page views",
 	visits: "Visits",
 	colPage: "Page",
@@ -30,7 +31,7 @@ const en = {
 	noPagesYet: "No pages recorded yet.",
 	nothingRecorded: "Nothing recorded yet.",
 	refresh: "Refresh",
-	openAnalytics: "Open analytics",
+	openAnalytics: "Open Umami Analytics",
 	openInUmami: "Open in Umami",
 	rangeDays: { one: "{count} day", other: "{count} days" },
 	topEntries: "Top entries",
@@ -44,7 +45,7 @@ const en = {
 	coverageMatched: "Per-entry numbers since {date}. Days before the plugin matched an entry are not counted per entry.",
 	coverageLive: "Per-entry numbers since {date}, as far back as the provider counts every page view.",
 	coverageProvider:
-		"Views for the last {days} days, as the provider counts them. Analytics per entry adds up only the days this site has stored, so its figures can be lower.",
+		"Views for the last {days} days, as the provider counts them. Umami per entry adds up only the days this site has stored, so its figures can be lower.",
 	breakdownsSince: "Referrers and countries since {date}, as far back as the provider counts every page view.",
 	perEntry: "Per entry",
 	viewsBy: "Views by {property}",
@@ -107,17 +108,18 @@ const en = {
 	noEntriesYet: "No entries yet",
 	noEntriesIndexing: "The content index is still being built. Entries appear as it progresses.",
 	noEntriesNoUrls:
-		"No published entry has a public URL. Check that the site URL is set in EmDash and that each collection has a URL Pattern (under Content Types), then press Rebuild index on the per-entry page.",
+		"No published entry has a public URL. Check that the site URL is set in EmDash and that each collection has a URL Pattern (under Content Types), then press Rebuild index on the Umami per entry page.",
 	noEntriesHere: "No published entries here.",
 	panelNoPage: "No page for this entry yet",
 	panelNoPageDetail: "Views appear once the entry is published at a public URL and the next sync has run.",
 	panelNotPublished: "Not published at the moment; these are the numbers from when it was.",
 	panelCountedAt: "Counted at {path}",
 	panelAllLanguages: "All languages: {count} in 30 days",
+	panelAllLanguagesSince: "All languages: {count} since {date}",
 
 	checkSetup: "Check setup",
 	checkAgain: "Check again",
-	backToAnalytics: "Back to analytics",
+	backToAnalytics: "Back to Umami Analytics",
 	setupTitle: "Setup check",
 	setupAllGood: "Everything the numbers depend on is in place.",
 	setupProblems: {
@@ -188,7 +190,7 @@ const en = {
 	notSynced: "Not synced yet",
 	estimatedSampled: "estimated (sampled)",
 	todayCounting: "today is still counting",
-	nothingMatched: "no page is matched to an entry yet; Check setup on the Analytics page says why",
+	nothingMatched: "no page is matched to an entry yet; Check setup on the Umami Analytics page says why",
 	lastAttemptFailed: "Last attempt failed: {error}",
 	lastAttemptFailedAge: "Last attempt failed {age}: {error}",
 	firstSyncPending: "The first sync has not run yet. It is scheduled now; numbers appear after it completes.",
@@ -206,9 +208,9 @@ const en = {
 	pageRefreshFailed: "The provider did not answer; showing the stored numbers.",
 	syncUnschedulable: "This site runs no scheduled tasks, so a sync cannot be requested.",
 
-	notConfigured: "Analytics is not configured yet: add {parts} in the plugin's settings.",
+	notConfigured: "Umami Analytics is not configured yet: add {parts} in the plugin's settings.",
 	partUmamiApiKey: "an Umami API key",
-	noNetwork: "Analytics cannot reach the network: the network:request capability is not granted.",
+	noNetwork: "Umami Analytics cannot reach the network: the network:request capability is not granted.",
 	noWebsiteIdSites: "No website ID set. Websites this API key can list: {sites}.",
 	noWebsiteIdNoList:
 		"No website ID set, and Umami lists no website for this API key's user or their teams. Copy the ID from the website's settings in Umami into the plugin's settings.",
@@ -237,6 +239,7 @@ const de: Record<MessageKey, Message> = {
 	noAnalyticsYet: "Noch keine Analysedaten",
 	visitsLastDays: "Besuche, letzte {days} Tage",
 	pageviewsLastDays: "Seitenaufrufe, letzte {days} Tage",
+	pageviewsSince: "Seitenaufrufe seit {date}",
 	pageviews: "Seitenaufrufe",
 	visits: "Besuche",
 	colPage: "Seite",
@@ -250,7 +253,7 @@ const de: Record<MessageKey, Message> = {
 	noPagesYet: "Noch keine Seiten erfasst.",
 	nothingRecorded: "Noch nichts erfasst.",
 	refresh: "Aktualisieren",
-	openAnalytics: "Analytics öffnen",
+	openAnalytics: "Umami Analytics öffnen",
 	openInUmami: "In Umami öffnen",
 	rangeDays: { one: "{count} Tag", other: "{count} Tage" },
 	topEntries: "Meistbesuchte Einträge",
@@ -266,7 +269,7 @@ const de: Record<MessageKey, Message> = {
 		"Zahlen pro Eintrag seit {date}. Tage, bevor das Plugin eine Seite einem Eintrag zugeordnet hat, zählen nicht pro Eintrag.",
 	coverageLive: "Zahlen pro Eintrag seit {date}, so weit zurück, wie der Anbieter jeden Seitenaufruf zählt.",
 	coverageProvider:
-		"Aufrufe der letzten {days} Tage, wie der Anbieter sie zählt. Analytics pro Eintrag summiert nur die Tage, die diese Website gespeichert hat, und kann daher niedrigere Zahlen zeigen.",
+		"Aufrufe der letzten {days} Tage, wie der Anbieter sie zählt. „Umami per entry“ summiert nur die Tage, die diese Website gespeichert hat, und kann daher niedrigere Zahlen zeigen.",
 	breakdownsSince: "Verweisquellen und Länder seit {date}, so weit zurück, wie der Anbieter jeden Seitenaufruf zählt.",
 	perEntry: "Pro Eintrag",
 	viewsBy: "Aufrufe nach {property}",
@@ -332,7 +335,7 @@ const de: Record<MessageKey, Message> = {
 	noEntriesYet: "Noch keine Einträge",
 	noEntriesIndexing: "Der Inhaltsindex wird noch aufgebaut. Einträge erscheinen nach und nach.",
 	noEntriesNoUrls:
-		"Kein veröffentlichter Eintrag hat eine öffentliche URL. Prüfe, ob die URL der Website in EmDash eingetragen ist und jede Kollektion ein URL-Muster hat (unter Inhaltstypen), und drücke dann „Index neu aufbauen“ auf der Seite pro Eintrag.",
+		"Kein veröffentlichter Eintrag hat eine öffentliche URL. Prüfe, ob die URL der Website in EmDash eingetragen ist und jede Kollektion ein URL-Muster hat (unter Inhaltstypen), und drücke dann „Index neu aufbauen“ auf der Seite „Umami per entry“.",
 	noEntriesHere: "Hier gibt es keine veröffentlichten Einträge.",
 	panelNoPage: "Noch keine Seite für diesen Eintrag",
 	panelNoPageDetail:
@@ -340,10 +343,11 @@ const de: Record<MessageKey, Message> = {
 	panelNotPublished: "Derzeit nicht veröffentlicht; das sind die Zahlen aus der Zeit davor.",
 	panelCountedAt: "Gezählt unter {path}",
 	panelAllLanguages: "Alle Sprachen: {count} in 30 Tagen",
+	panelAllLanguagesSince: "Alle Sprachen: {count} seit {date}",
 
 	checkSetup: "Einrichtung prüfen",
 	checkAgain: "Erneut prüfen",
-	backToAnalytics: "Zurück zur Analyse",
+	backToAnalytics: "Zurück zu Umami Analytics",
 	setupTitle: "Einrichtung",
 	setupAllGood: "Alles, wovon die Zahlen abhängen, ist eingerichtet.",
 	setupProblems: {
@@ -420,7 +424,7 @@ const de: Record<MessageKey, Message> = {
 	notSynced: "Noch nicht synchronisiert",
 	estimatedSampled: "geschätzt (Stichprobe)",
 	todayCounting: "heute läuft die Zählung noch",
-	nothingMatched: "noch keine Seite einem Eintrag zugeordnet; „Einrichtung prüfen“ auf der Seite Analytics nennt den Grund",
+	nothingMatched: "noch keine Seite einem Eintrag zugeordnet; „Einrichtung prüfen“ auf der Seite „Umami Analytics“ nennt den Grund",
 	lastAttemptFailed: "Letzter Versuch fehlgeschlagen: {error}",
 	lastAttemptFailedAge: "Letzter Versuch fehlgeschlagen {age}: {error}",
 	firstSyncPending:
@@ -440,9 +444,9 @@ const de: Record<MessageKey, Message> = {
 	syncUnschedulable:
 		"Diese Webseite führt keine geplanten Aufgaben aus, daher lässt sich keine Synchronisierung anfordern.",
 
-	notConfigured: "Analytics ist noch nicht eingerichtet: Trage {parts} in den Einstellungen des Plugins ein.",
+	notConfigured: "Umami Analytics ist noch nicht eingerichtet: Trage {parts} in den Einstellungen des Plugins ein.",
 	partUmamiApiKey: "einen Umami-API-Schlüssel",
-	noNetwork: "Analytics kann das Netzwerk nicht erreichen: Die Berechtigung network:request ist nicht erteilt.",
+	noNetwork: "Umami Analytics kann das Netzwerk nicht erreichen: Die Berechtigung network:request ist nicht erteilt.",
 	noWebsiteIdSites: "Keine Website-ID gesetzt. Websites, die dieser API-Schlüssel auflisten kann: {sites}.",
 	noWebsiteIdNoList:
 		"Keine Website-ID gesetzt, und Umami listet für den Benutzer dieses API-Schlüssels und seine Teams keine Website auf. Übernimm die ID aus den Einstellungen der Website in Umami in die Einstellungen des Plugins.",

@@ -129,7 +129,7 @@
 				"type": "string",
 				"label": "Break down page views by",
 				"default": "category",
-				"description": "Event data your site attaches to its page views, up to three, comma-separated, for example category, section, tags. The Analytics page shows page views for each value. Leave empty for none."
+				"description": "Event data your site attaches to its page views, up to three, comma-separated, for example category, section, tags. The Umami Analytics page shows page views for each value. Leave empty for none."
 			},
 			"readThrough": {
 				"type": "boolean",
@@ -194,19 +194,20 @@
 		},
 
 		"pages": [
-			{ "path": "/analytics", "label": "Analytics", "icon": "chart-line" },
-			{ "path": "/analytics/content", "label": "Analytics per entry", "icon": "chart" }
+			{ "path": "/analytics", "label": "Umami Analytics", "icon": "chart-line" },
+			{ "path": "/analytics/content", "label": "Umami per entry", "icon": "chart" }
 		],
-		"widgets": [{ "id": "traffic", "title": "Traffic", "size": "half" }],
+		"widgets": [{ "id": "traffic", "title": "Umami traffic", "size": "half" }],
 
 		// Opens beside the entry editor, in every collection: the plugin
 		// cannot know at build time which collections a site routes, and
 		// an entry without a page says so in the panel.
 		//
-		// "Analytics" because manifest strings cannot be translated, and it
-		// reads the same in English and German; "Views" sat in English above
-		// a German panel.
-		"editorPanels": [{ "id": "views", "title": "Analytics", "route": "panel" }]
+		// "Umami" because manifest strings cannot be translated, and a name
+		// reads the same in English and German ("Views" sat in English above
+		// a German panel). It names the plugin, so the panel is not taken
+		// for another analytics plugin's.
+		"editorPanels": [{ "id": "views", "title": "Umami", "route": "panel" }]
 	},
 
 	// The registry page's tabs. Profile-level: they carry across releases.

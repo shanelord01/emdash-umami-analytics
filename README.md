@@ -22,12 +22,16 @@ what you find in the repository's issues.
   Umami, newest first. Charts and views per entry refill over the
   catch-up: about two hours for 90 days and 100 entries on Node, longer
   on Cloudflare Workers.
+- The pages, card and panel are named after Umami so they are not taken
+  for another plugin's: Umami Analytics, Umami per entry, the Umami
+  traffic card and the Umami panel. The page addresses are unchanged.
 - The registry page has tabs (description, installation, FAQ, changelog
   and security) and a banner.
 - Admin fixes: no more "no page is matched" when every entry is matched,
   the dashboard's top pages cover the same 7 days as its cards, per-entry
-  30-day figures are labelled with the day the stored history starts, the
-  daily chart names its series, and a long visit time stays on one line.
+  30-day figures, in the editor panel as well, are labelled with the day
+  the stored history starts, the daily chart names its series, and a long
+  visit time stays on one line.
 - The MCP tools now describe their days in your time zone, so EmDash
   turns Agent access off after the update. Turn it on again under
   Plugins.
@@ -52,10 +56,10 @@ what you find in the repository's issues.
 
 | Where | What you see |
 |---|---|
-| Dashboard | A Traffic card: visits, page views and engagement for the last seven days against the week before, the five most viewed pages with their entries, and the time of the last sync |
-| Plugins > Analytics | Visits and page views over 7, 30 or 90 days with a daily chart, bounce rate and visit time with a chart each, top entries, referrers and countries, page views by the event data your site attaches (by category, to start with), reads by day, a link to the website in Umami, and a setup check |
-| Plugins > Analytics per entry | Every published entry with its page views over 7 and 30 days and its read-through, sortable, by collection or across all of them. Translated content can be shown with its languages combined |
-| Entry editor | An Analytics panel with that entry's 7 and 30 day page views, how far readers get, and the path they are counted at |
+| Dashboard | An Umami traffic card: visits, page views and engagement for the last seven days against the week before, the five most viewed pages with their entries, and the time of the last sync |
+| Plugins > Umami Analytics | Visits and page views over 7, 30 or 90 days with a daily chart, bounce rate and visit time with a chart each, top entries, referrers and countries, page views by the event data your site attaches (by category, to start with), reads by day, a link to the website in Umami, and a setup check |
+| Plugins > Umami per entry | Every published entry with its page views over 7 and 30 days and its read-through, sortable, by collection or across all of them. Translated content can be shown with its languages combined |
+| Entry editor | An Umami panel with that entry's 7 and 30 day page views, how far readers get, and the path they are counted at. While the stored history is shorter than 30 days, the figures are labelled with the day it starts, as on Umami per entry |
 | MCP | Four read-only tools that give an AI agent the same numbers |
 
 ## What you need
@@ -117,7 +121,7 @@ Open Plugins in the admin, then the plugin's settings.
 | Keep daily history for | 90 days by default, 400 at most. The plugin reads this far back from Umami after install |
 | Entries per sync step | 36 by default. Lower it to write fewer database rows per day |
 
-After saving, open Plugins > Analytics and select Check setup. It runs
+After saving, open Plugins > Umami Analytics and select Check setup. It runs
 through everything the numbers depend on, from the key to the scheduled
 sync, and gives one sentence for each problem it finds. Most setup
 mistakes produce zeroes and no error, so run it if the numbers look
@@ -141,15 +145,15 @@ token.
 |---|---|
 | `/websites/{id}/stats` | one day's page views, visits and visitors |
 | `/websites/{id}/metrics/expanded` | pages, referrers, countries and hostnames |
-| `/websites/{id}/event-data/events` | page views by event data value, when the Analytics page opens |
+| `/websites/{id}/event-data/events` | page views by event data value, when the Umami Analytics page opens |
 | `/websites/{id}/event-data/values` | read events per entry, during the sync, only with read-through on |
 | `/websites/{id}/events/series` | read events per day, during the sync, only with read-through on |
 | `/websites` | listing websites, only while no website ID is set or during a setup check |
 | `/me/teams` | listing the key's teams, only while no website ID is set |
 | `/teams/{id}/websites` | listing a team's websites, only while no website ID is set |
 
-A sync makes at most seven requests. Opening the Analytics page makes
-five.
+A sync makes at most seven requests. Opening the Umami Analytics page
+makes five.
 
 ## How the numbers are made
 
@@ -175,8 +179,8 @@ each day's totals, so it costs no extra request. Days stored before
 version 0.1.2 have none until the plugin reads them again, and are left
 out of the figures, never counted as zero.
 
-The Analytics page also asks Umami directly each time it opens, so it
-shows numbers from the first minute after setup.
+The Umami Analytics page also asks Umami directly each time it opens,
+so it shows numbers from the first minute after setup.
 
 When you compare with Umami's own dashboard:
 
@@ -193,8 +197,8 @@ When you compare with Umami's own dashboard:
 ## Views by event data
 
 Umami can store extra values with each page view, such as the category of
-the blog post being read. When your site sends them, the Analytics page
-shows how many page views carried each value, one table for each property
+the blog post being read. When your site sends them, the Umami Analytics
+page shows how many page views carried each value, one table for each property
 named in the Break down page views by setting. The default is `category`.
 
 Your site attaches the values with the Umami tracker's `data-before-send`
@@ -227,8 +231,8 @@ How the tables count:
   nothing, so a longer range counts only the days since.
 - A property no page view carries shows no table and no error.
 
-The tables are read from Umami each time the Analytics page opens, in one
-request. They are not on the dashboard card, and when Umami cannot be
+The tables are read from Umami each time the Umami Analytics page opens,
+in one request. They are not on the dashboard card, and when Umami cannot be
 reached the page shows its stored numbers without them. Umami 3.4 has no
 request made for counting page views by these values, so the plugin uses
 its event data request with filters that select page views. If a later
@@ -238,9 +242,9 @@ empty until the plugin is updated.
 ## Read-through
 
 If your site sends a custom event as a reader reaches each part of an
-entry, the plugin shows how far readers get: on the Analytics per entry
-page beside each entry's 30-day views, in the editor panel as a bar per
-depth against the entry's views, and as reads by day on the Analytics
+entry, the plugin shows how far readers get: on the Umami per entry page
+beside each entry's 30-day views, in the editor panel as a bar per depth
+against the entry's views, and as reads by day on the Umami Analytics
 page.
 
 Set the four reading fields, below the Read-through switch, to match your event, for example:
@@ -271,11 +275,11 @@ clears every stored number, so demo figures never mix with real ones.
 
 | Surface | Roles |
 |---|---|
-| Dashboard card and both Analytics pages | Editors and admins |
+| Dashboard card, Umami Analytics and Umami per entry | Editors and admins |
 | Entry editor panel | Authors for their own entries, editors and admins for every entry |
-| MCP tools | The same as the Analytics pages |
+| MCP tools | The same as the two pages |
 
-Authors and contributors still see the Traffic card on the dashboard,
+Authors and contributors still see the Umami traffic card on the dashboard,
 with a permission message inside it. EmDash shows every dashboard card to
 every role and checks the permission when the card loads.
 
@@ -320,7 +324,7 @@ Umami Cloud account, or wherever you host your own.
 - A tested Umami Cloud connection. See the note at the top.
 - Visitors. Umami counts them, and no page shows them yet.
 - Referrers and countries for longer ranges when Umami cannot be reached.
-  The Analytics page reads them from Umami, and falls back to the last
+  The Umami Analytics page reads them from Umami, and falls back to the last
   sync's week.
 - A views column in EmDash's content list.
 - Fast catch-up on Cloudflare Workers, where a step waits for the next
