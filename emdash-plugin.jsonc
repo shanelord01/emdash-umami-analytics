@@ -18,13 +18,21 @@
 	//
 	// Listing images live in `images/`, which the bundle leaves out. The
 	// banner is 1536x512 because the registry shows it at 3:1, and at that
-	// shape link previews show it whole. Screenshots would go under
-	// `release.artifacts.screenshots`. There are none yet.
+	// shape link previews show it whole. The icon is 512x512 with transparent
+	// corners, and the screenshots come from a filler-data site.
 	"release": {
 		"requires": { "env:emdash": ">=1.0.1" },
 		"artifacts": {
 			"icon": { "file": "./images/icon.webp" },
-			"banner": { "file": "./images/banner.webp" }
+			"banner": { "file": "./images/banner.webp" },
+			// Taken on a filler-data site ("Coastline Notes") with demo data, never a real one.
+			"screenshots": [
+				{ "file": "./images/screenshot-1-overview.webp" },
+				{ "file": "./images/screenshot-2-engagement.webp" },
+				{ "file": "./images/screenshot-3-per-entry.webp" },
+				{ "file": "./images/screenshot-4-editor-panel.webp" },
+				{ "file": "./images/screenshot-5-dashboard-card.webp" }
+			]
 		}
 	},
 

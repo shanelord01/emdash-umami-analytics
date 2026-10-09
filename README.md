@@ -332,7 +332,6 @@ Umami Cloud account, or wherever you host your own.
 - Views by event data on the dashboard card, display names for the
   values, and tables limited by a second value (for example categories of
   blog posts only).
-- Screenshots.
 
 ## Attribution
 
