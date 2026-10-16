@@ -21,8 +21,8 @@ Keep `emdash-plugin.jsonc` aligned with the runtime implementation, declare ever
 `^1.0.0`: npm carries an accidental, deprecated `emdash@1.0.0` published
 in April 2026, five months before the real 1.0. The dev dependency stays
 below the next major until the toolchain is moved on purpose. Built with
-`@emdash-cms/plugin-cli@0.13.1`, `@emdash-cms/plugin-test@0.2.6` and
-`@emdash-cms/blocks@1.0.1`; `scripts/compat-matrix.sh` runs the suite
+`@emdash-cms/plugin-cli@0.13.4`, `@emdash-cms/plugin-test@0.2.9` and
+`@emdash-cms/blocks@1.3.0`; `scripts/compat-matrix.sh` runs the suite
 against later EmDash releases. A plain `pnpm install` is enough.
 
 ## Two builds

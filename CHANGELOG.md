@@ -1,5 +1,11 @@
 # emdash-umami-analytics
 
+## 0.1.4
+
+The two admin pages sit in one Umami folder in the sidebar, under a single top-level entry: Analytics and Per entry. They keep their addresses (`/analytics` and `/analytics/content`), so bookmarks still work. The folder needs EmDash 1.2 or later: on 1.0.1 and 1.1 the pages are listed one by one, as before. The folder opens and closes on a click and does not open a page by itself.
+
+Built with `@emdash-cms/plugin-cli@0.13.4` and `@emdash-cms/plugin-test@0.2.9` (EmDash 1.3.0). No new permissions and no change to the MCP tools, so Agent access stays on.
+
 ## 0.1.3
 
 The admin pages, the dashboard card and the editor panel are named after Umami, so they are not mistaken for another plugin's: Analytics is now Umami Analytics, Analytics per entry is Umami per entry, the Traffic card is Umami traffic and the Analytics panel beside the editor is Umami. The pages keep their paths (`/analytics` and `/analytics/content`), so bookmarks still work, and links, buttons and messages that name them, in English and German, use the new names.

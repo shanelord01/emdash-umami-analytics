@@ -202,8 +202,10 @@
 		},
 
 		"pages": [
-			{ "path": "/analytics", "label": "Umami Analytics", "icon": "chart-line" },
-			{ "path": "/analytics/content", "label": "Umami per entry", "icon": "chart" }
+			// One sidebar folder named Umami (EmDash 1.2 and later, older hosts
+			// list the pages flat).
+			{ "path": "/analytics", "label": "Analytics", "icon": "chart-line", "group": "Umami" },
+			{ "path": "/analytics/content", "label": "Per entry", "icon": "chart", "group": "Umami" }
 		],
 		"widgets": [{ "id": "traffic", "title": "Umami traffic", "size": "half" }],
 

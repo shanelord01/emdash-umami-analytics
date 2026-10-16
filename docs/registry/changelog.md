@@ -1,3 +1,8 @@
+## 0.1.4
+
+- The pages sit in one Umami folder in the sidebar (Analytics, Per entry) on EmDash 1.2 and later. Their addresses are unchanged, and older EmDash lists them one by one.
+- No new permissions and no change to the MCP tools.
+
 ## 0.1.3, 9 October 2026
 
 - Days follow your time zone. They were UTC days, so a page view before about 10 am in Sydney counted on the day before. The new Time zone setting starts at Australia/Sydney. Set the website's zone in Umami.
@@ -9,10 +14,8 @@
 
 ## 0.1.2, 1 October 2026
 
-- Engagement beside the totals: bounce rate, average visit and pages per visit against the period before, on the Analytics page, the dashboard card and in the `site_totals` MCP tool.
-- Read-through per entry, for sites that send a custom event as a reader reaches each depth. Four new settings, off by default. It shows on the Analytics per entry page, in the editor panel and as reads by day on the Analytics page.
-- Faster catch-up after install.
-- Two new Umami endpoints: `/websites/{id}/event-data/values` and `/websites/{id}/events/series`, used only with read-through on.
-- The `site_totals` answer gained an `engagement` field. Turn Agent access on again under Plugins after the update.
+- Engagement beside the totals: bounce rate, average visit and pages per visit against the period before, and a new `engagement` field in `site_totals`.
+- Read-through per entry (four settings, off by default) and two new Umami endpoints used only with it on. Faster catch-up after install.
+- Turn Agent access on again under Plugins after the update.
 
 Full history: [CHANGELOG.md](https://github.com/shanelord01/emdash-umami-analytics/blob/main/CHANGELOG.md).

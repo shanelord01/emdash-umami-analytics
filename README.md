@@ -59,8 +59,8 @@ what you find in the repository's issues.
 | Where | What you see |
 |---|---|
 | Dashboard | An Umami traffic card: visits, page views and engagement for the last seven days against the week before, the five most viewed pages with their entries, and the time of the last sync |
-| Plugins > Umami Analytics | Visits and page views over 7, 30 or 90 days with a daily chart, bounce rate and visit time with a chart each, top entries, referrers and countries, page views by the event data your site attaches (by category, to start with), reads by day, a link to the website in Umami, and a setup check |
-| Plugins > Umami per entry | Every published entry with its page views over 7 and 30 days and its read-through, sortable, by collection or across all of them. Translated content can be shown with its languages combined |
+| Plugins > Umami > Analytics | Visits and page views over 7, 30 or 90 days with a daily chart, bounce rate and visit time with a chart each, top entries, referrers and countries, page views by the event data your site attaches (by category, to start with), reads by day, a link to the website in Umami, and a setup check |
+| Plugins > Umami > Per entry | Every published entry with its page views over 7 and 30 days and its read-through, sortable, by collection or across all of them. Translated content can be shown with its languages combined |
 | Entry editor | An Umami panel with that entry's 7 and 30 day page views, how far readers get, and the path they are counted at. While the stored history is shorter than 30 days, the figures are labelled with the day it starts, as on Umami per entry |
 | MCP | Four read-only tools that give an AI agent the same numbers |
 

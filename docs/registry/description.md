@@ -4,7 +4,7 @@ Shows your Umami numbers inside the EmDash admin: site traffic on the dashboard,
 
 - **Umami traffic card.** On the dashboard: visits, page views and engagement for the last seven days against the week before, and the five most viewed pages with their entries.
 - **Umami Analytics page.** A daily chart over 7, 30 or 90 days, bounce rate and visit time, top entries, referrers, countries, page views by the event data your site attaches (by category, to start with), and a setup check that names the fix for each problem it finds.
-- **Umami per entry page.** Every published entry with its page views over 7 and 30 days, sortable, for one collection or all of them, with translations combined if you like.
+- **Per entry page.** Every published entry with its page views over 7 and 30 days, sortable, for one collection or all of them, with translations combined if you like.
 - **Umami editor panel.** Each entry's 7 and 30 day page views beside the editor, and how far readers get when your site sends a read event.
 - **MCP tools.** Four read-only tools that answer from the stored numbers.
 
